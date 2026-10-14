@@ -1,0 +1,124 @@
+=== STATS (3 rows, key cols) ===
+shape: (3, 19)
+┌───────────┬───────┬────────┬─────────┬───┬─────────────┬─────────────┬─────────────┬─────────────┐
+│ name      ┆ kills ┆ deaths ┆ assists ┆ … ┆ flash_assis ┆ traded_deat ┆ rounds_play ┆ headshot_ki │
+│ ---       ┆ ---   ┆ ---    ┆ ---     ┆   ┆ ts          ┆ hs          ┆ ed          ┆ lls         │
+│ str       ┆ i32   ┆ i32    ┆ i32     ┆   ┆ ---         ┆ ---         ┆ ---         ┆ ---         │
+│           ┆       ┆        ┆         ┆   ┆ i32         ┆ i32         ┆ i32         ┆ i32         │
+╞═══════════╪═══════╪════════╪═════════╪═══╪═════════════╪═════════════╪═════════════╪═════════════╡
+│ ♕NGDTrue♕ ┆ 25    ┆ 13     ┆ 3       ┆ … ┆ 0           ┆ 0           ┆ 21          ┆ 6           │
+│ 琵琶朗朗  ┆ 21    ┆ 13     ┆ 9       ┆ … ┆ 2           ┆ 2           ┆ 21          ┆ 7           │
+│ 富 睿 控  ┆ 20    ┆ 17     ┆ 7       ┆ … ┆ 0           ┆ 2           ┆ 21          ┆ 6           │
+└───────────┴───────┴────────┴─────────┴───┴─────────────┴─────────────┴─────────────┴─────────────┘
+
+=== STATS dtypes ===
+Schema({'steamid': UInt64, 'name': String, 'rounds_played': Int32, 'kills': Int32, 'deaths': Int32, 'assists': Int32, 'flash_assists': Int32, 'headshot_kills': Int32, 'headshot_pct': Float32, 'opening_kills': Int32, 'opening_deaths': Int32, 'traded_deaths': Int32, 'multikill_2k': Int32, 'multikill_3k': Int32, 'multikill_4k': Int32, 'multikill_5k': Int32, 'kast': Float32, 'adr': Float32, 'clutches_played': Int32, 'clutches_won': Int32, 'clutch_1v1': Int32, 'clutch_1v2': Int32, 'clutch_1v3': Int32, 'clutch_1v4': Int32, 'clutch_1v5': Int32, 'utility_damage': Int32, 'flashes_thrown': Int32, 'enemies_flashed': Int32, 'flash_duration_dealt': Float32})
+
+=== ROUNDS (4 rows) ===
+shape: (4, 10)
+┌───────────┬────────────┬────────────┬──────────┬───┬────────────┬────────┬───────────┬───────────┐
+│ round_num ┆ start_tick ┆ freeze_end ┆ end_tick ┆ … ┆ winner_sid ┆ reason ┆ reason_na ┆ is_knife_ │
+│ ---       ┆ ---        ┆ _tick      ┆ ---      ┆   ┆ e          ┆ ---    ┆ me        ┆ round     │
+│ i32       ┆ i32        ┆ ---        ┆ i32      ┆   ┆ ---        ┆ i32    ┆ ---       ┆ ---       │
+│           ┆            ┆ i32        ┆          ┆   ┆ str        ┆        ┆ str       ┆ bool      │
+╞═══════════╪════════════╪════════════╪══════════╪═══╪════════════╪════════╪═══════════╪═══════════╡
+│ 1         ┆ 65         ┆ 1441       ┆ 5321     ┆ … ┆ counter-te ┆ 7      ┆ bomb_defu ┆ false     │
+│           ┆            ┆            ┆          ┆   ┆ rrorist    ┆        ┆ sed       ┆           │
+│ 2         ┆ 5769       ┆ 6729       ┆ 11385    ┆ … ┆ counter-te ┆ 7      ┆ bomb_defu ┆ false     │
+│           ┆            ┆            ┆          ┆   ┆ rrorist    ┆        ┆ sed       ┆           │
+│ 3         ┆ 11833      ┆ 12793      ┆ 17798    ┆ … ┆ terrorist  ┆ 1      ┆ target_bo ┆ false     │
+│           ┆            ┆            ┆          ┆   ┆            ┆        ┆ mbed      ┆           │
+│ 4         ┆ 18246      ┆ 19206      ┆ 22227    ┆ … ┆ terrorist  ┆ 9      ┆ terrorist ┆ false     │
+│           ┆            ┆            ┆          ┆   ┆            ┆        ┆ s_win     ┆           │
+└───────────┴────────────┴────────────┴──────────┴───┴────────────┴────────┴───────────┴───────────┘
+
+=== ROUND_ECONOMY (6 rows) ===
+shape: (6, 5)
+┌───────────┬───────────────────┬─────────────────┬──────────┬───────────┐
+│ round_num ┆ side              ┆ equipment_value ┆ buy_type ┆ n_players │
+│ ---       ┆ ---               ┆ ---             ┆ ---      ┆ ---       │
+│ i32       ┆ str               ┆ i32             ┆ str      ┆ i32       │
+╞═══════════╪═══════════════════╪═════════════════╪══════════╪═══════════╡
+│ 1         ┆ counter-terrorist ┆ 3450            ┆ pistol   ┆ 5         │
+│ 1         ┆ terrorist         ┆ 4350            ┆ pistol   ┆ 5         │
+│ 2         ┆ counter-terrorist ┆ 18800           ┆ force    ┆ 5         │
+│ 2         ┆ terrorist         ┆ 7350            ┆ force    ┆ 5         │
+│ 3         ┆ counter-terrorist ┆ 22450           ┆ full     ┆ 5         │
+│ 3         ┆ terrorist         ┆ 20650           ┆ full     ┆ 5         │
+└───────────┴───────────────────┴─────────────────┴──────────┴───────────┘
+
+=== PLAYERS ===
+shape: (11, 4)
+┌───────────────────┬───────────────────┬───────────────────┬────────────────┐
+│ steamid           ┆ name              ┆ side              ┆ team_clan_name │
+│ ---               ┆ ---               ┆ ---               ┆ ---            │
+│ u64               ┆ str               ┆ str               ┆ str            │
+╞═══════════════════╪═══════════════════╪═══════════════════╪════════════════╡
+│ 76561*****669 ┆ LecW1nd           ┆ terrorist         ┆ null           │
+│ 76561*****651 ┆ Unin              ┆ terrorist         ┆ null           │
+│ 76561*****428 ┆ 一条想fly的肥鱼   ┆ terrorist         ┆ null           │
+│ 76561*****137 ┆ 琵琶朗朗          ┆ terrorist         ┆ null           │
+│ 76561*****383 ┆ Triangulation     ┆ terrorist         ┆ null           │
+│ …                 ┆ …                 ┆ …                 ┆ …              │
+│ 76561*****121 ┆ 76561*****121 ┆ counter-terrorist ┆ null           │
+│ 76561*****533 ┆ ZKKKKK            ┆ counter-terrorist ┆ null           │
+│ 76561*****331 ┆ DokiDoki          ┆ counter-terrorist ┆ null           │
+│ 76561*****415 ┆ ♕NGDTrue♕         ┆ counter-terrorist ┆ null           │
+│ 0                 ┆ DemoRecorder      ┆ null              ┆ null           │
+└───────────────────┴───────────────────┴───────────────────┴────────────────┘
+
+=== KILLS first row (all cols) ===
+shape: (1, 37)
+┌────────────┬────────────┬────────────┬────────────┬───┬────────────┬──────────┬───────────┬──────┐
+│ attacker_e ┆ attacker_e ┆ attacker_s ┆ attacker_n ┆ … ┆ hitgroup_n ┆ is_trade ┆ victim_tr ┆ tick │
+│ ntity_id   ┆ ntity_seri ┆ teamid     ┆ ame        ┆   ┆ ame        ┆ ---      ┆ aded      ┆ ---  │
+│ ---        ┆ al         ┆ ---        ┆ ---        ┆   ┆ ---        ┆ bool     ┆ ---       ┆ i32  │
+│ i32        ┆ ---        ┆ u64        ┆ str        ┆   ┆ str        ┆          ┆ bool      ┆      │
+│            ┆ u32        ┆            ┆            ┆   ┆            ┆          ┆           ┆      │
+╞════════════╪════════════╪════════════╪════════════╪═══╪════════════╪══════════╪═══════════╪══════╡
+│ 283        ┆ 972        ┆ 76561***** ┆ ZKKKKK     ┆ … ┆ head       ┆ false    ┆ false     ┆ 2711 │
+│            ┆            ┆ *****    ┆            ┆   ┆            ┆          ┆           ┆      │
+└────────────┴────────────┴────────────┴────────────┴───┴────────────┴──────────┴───────────┴──────┘
+
+=== EVENTS names ===
+['CS_UM_EndOfMatchAllPlayersData', 'CS_UM_MatchEndConditions', 'CS_UM_PlayerStatsUpdate', 'CS_UM_RadioText', 'CS_UM_ServerRankUpdate', 'CS_UM_VotePass', 'CS_UM_WeaponMagDrop', 'CS_UM_WeaponSound', 'CS_UM_XpUpdate', 'UM_ParticleManager', 'UM_SayText2', 'UM_TextMsg', 'announce_phase_end', 'begin_new_match', 'bomb_begindefuse', 'bomb_beginplant', 'bomb_defused', 'bomb_dropped', 'bomb_exploded', 'bomb_pickup', 'bomb_planted', 'bullet_damage', 'buytime_ended', 'cs_pre_restart', 'cs_round_final_beep', 'cs_round_start_beep', 'cs_win_panel_match', 'flashbang_detonate', 'hegrenade_detonate', 'hltv_versioninfo', 'inferno_expire', 'inferno_startburn', 'item_equip', 'item_pickup', 'other_death', 'player_blind', 'player_death', 'player_disconnect', 'player_footstep', 'player_hurt', 'player_spawn', 'player_team', 'round_announce_last_round_half', 'round_announce_match_point', 'round_announce_match_start', 'round_freeze_end', 'round_officially_ended', 'round_poststart', 'round_prestart', 'round_time_warning', 'smokegrenade_detonate', 'smokegrenade_expired', 'weapon_fire', 'weapon_reload', 'weapon_zoom']
+
+=== snapshots signature ===
+(*, ticks=None, every=None, seconds=None, events=None, start_tick=None, end_tick=None)
+Read player state at selected ticks as a DataFrame.
+
+Return one row per active player per tick. See :data:`awpy.SNAPSHOT_PROPERTIES`
+for the schema. Select ticks with:
+
+- ``ticks``: one tick or a list.
+- ``every`` or ``seconds``: a stride in ticks or seconds. Do not set both.
+- ``events``: ticks with a named game event, or a list of event names.
+- ``start_tick`` and ``end_tick``: an inclusive window. Alone, this selects
+  every tick in the window. With other selectors, it bounds the selection.
+
+At least one selector is required. One to four explicit ticks without
+other selectors use keyframe seeks. Other requests decode keyframe
+segments in parallel. Results are not cached.
+
+Examples::
+
+    demo.snapshots(ticks=[29000, 30000])
+    demo.snapshots(seconds=1, start_tick=0, end_tick=64000)
+   
+
+=== MAP DATA ===
+AWPY_DATA_DIR = %USERPROFILE%\.awpy
+data_dir() = %USERPROFILE%\.awpy\2000930
+exists: False
+available_maps(): ['ar_baggage', 'ar_pool_day', 'ar_shoots', 'ar_shoots_night', 'cs_italy', 'cs_office', 'cs_shelter', 'de_ancient', 'de_ancient_night', 'de_anubis', 'de_boulder', 'de_cache', 'de_debris', 'de_dust2', 'de_eldorado', 'de_fachwerk', 'de_inferno', 'de_mirage', 'de_nuke', 'de_overpass', 'de_poseidon', 'de_train', 'de_vertigo', 'rush_001']
+latest_version(): 2000930
+local_versions(): ['2000930']
+manifest(): {'artifacts': {'geometry.zip': {'bytes': 56674290, 'sha256': '65806f6470bfa19c007fea8c804c8ffc33ff5c83ae4eeb8bbd20c5eaa5311c1b'}, 'images.zip': {'bytes': 2876805, 'sha256': 'c9d6739c28057858cae17f9bedf7f62b338205dbeccaf06b5a221c31740c5e49'}, 'navs.zip': {'bytes': 8432990, 'sha256': 'a652863a0437901b3047692d65bd900945396774a1423d1f8f5eb9edfa67bff2'}}, 'buildid': '25815307', 'client_version': '2000930', 'generated_at': '2026-10-09T07:35:33.799152+00:00', 'maps': ['ar_baggage', 'ar_pool_day', 'ar_shoots', 'ar_shoots_night', 'cs_italy', 'cs_office', 'cs_shelter', 'de_ancient', 'de_ancient_night', 'de_anubis', 'de_boulder', 'de_cache', 'de_debris', 'de_dust2', 'de_eldorado', 'de_fachwerk', 'de_inferno', 'de_mirage', 'de_nuke', 'de_overpass', 'de_poseidon', 'de_train', 'de_vertigo', 'rush_001'], 'patch_version': '1.41.9.0', 'release_key': '2000930', 'server_version': '2000930', 'source_revision': '11106093', 'version_date': 'Oct 08 2026', 'version_time': '14:54:05'}
+
+=== map_data de_mirage ===
+map_data err: FileNotFoundError no such asset in pnxenopoulos/awpy-data: https://github.com/pnxenopoulos/awpy-data/releases/download/de_mirage/map_data.json
+
+=== radar_path / mesh_path / nav_path ===
+radar_path err: FileNotFoundError no such asset in pnxenopoulos/awpy-data: https://github.com/pnxenopoulos/awpy-data/releases/download/de_mirage/images.zip
+mesh_path err: FileNotFoundError no such asset in pnxenopoulos/awpy-data: https://github.com/pnxenopoulos/awpy-data/releases/download/de_mirage/geometry.zip
+nav_path err: FileNotFoundError no such asset in pnxenopoulos/awpy-data: https://github.com/pnxenopoulos/awpy-data/releases/download/de_mirage/navs.zip

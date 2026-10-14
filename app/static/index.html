@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CS2 数据面板</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>CS2 数据面板</h1>
+  <nav>
+    <button data-page="home" class="active">首页</button>
+    <button data-page="match" class="hidden" id="nav-match">比赛</button>
+    <button data-page="players" class="hidden" id="nav-players">玩家</button>
+    <button data-page="map" class="hidden" id="nav-map">地图</button>
+    <button data-page="replay" class="hidden" id="nav-replay">回放</button>
+    <button data-page="compare" class="hidden" id="nav-compare">对比</button>
+  </nav>
+  <span class="dim" id="ctx" style="margin-left:auto;font-size:12px"></span>
+</header>
+<main>
+
+  <section id="page-home">
+    <div class="card">
+      <h2>导入 demo</h2>
+      <div class="drop" id="drop">
+        <div style="font-size:15px;margin-bottom:6px">把 .dem 文件拖到这里，或点击选择</div>
+        <div style="font-size:12px">支持 CS2（Source 2）demo；解析在后台进行，完成后自动打开比赛页</div>
+      </div>
+      <input type="file" id="file" accept=".dem" class="hidden">
+      <div class="row" style="margin-top:14px">
+        <button class="btn ghost" id="btn-scan">扫描本机录像</button>
+        <span class="dim" id="scan-hint" style="font-size:12px"></span>
+      </div>
+      <div id="scan-list" style="margin-top:12px"></div>
+      <div id="task-box" class="hidden" style="margin-top:14px">
+        <div class="row"><b id="task-name"></b><span class="dim" id="task-stage"></span></div>
+        <div class="bar"><i id="task-bar"></i></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>已解析的比赛 <span class="dim" id="match-count" style="font-size:12px"></span></h2>
+      <div class="row" style="margin-bottom:10px">
+        <button class="btn" id="btn-compare" disabled>对比选中的比赛</button>
+        <button class="btn ghost" id="btn-clear-sel">清空选择</button>
+        <span class="dim" id="sel-hint" style="font-size:12px">勾选 2 场以上可比对</span>
+      </div>
+      <div class="matches" id="matches"></div>
+      <div class="empty hidden" id="no-matches">还没有解析过比赛</div>
+    </div>
+  </section>
+
+  <section id="page-match" class="hidden">
+    <div class="card">
+      <h2 id="match-title">比赛</h2>
+      <div class="row" id="match-meta"></div>
+    </div>
+    <div class="grid two">
+      <div class="card"><h2>经济曲线</h2><div id="chart-economy" class="chart"></div></div>
+      <div class="card"><h2>回合结果</h2><div id="chart-rounds" class="chart"></div></div>
+    </div>
+    <div class="card">
+      <h2>回合明细</h2>
+      <div class="scroll"><table id="tbl-rounds"></table></div>
+    </div>
+  </section>
+
+  <section id="page-players" class="hidden">
+    <div class="card">
+      <h2>记分板 <span class="dim" style="font-size:12px">点击表头排序 · 点击行看雷达图</span></h2>
+      <div class="scroll"><table id="tbl-players"></table></div>
+    </div>
+    <div class="grid two">
+      <div class="card"><h2 id="radar-title">雷达图</h2><div id="chart-radar" class="chart"></div></div>
+      <div class="card"><h2>ADR / KAST 对比</h2><div id="chart-adr" class="chart"></div></div>
+    </div>
+  </section>
+
+  <section id="page-map" class="hidden">
+    <div class="card">
+      <h2>地图分布</h2>
+      <div class="row">
+        <span class="pill" id="map-name"></span>
+        <button class="btn ghost" data-heat="kills">击杀</button>
+        <button class="btn ghost" data-heat="deaths">死亡</button>
+        <button class="btn ghost" data-heat="shots">射击</button>
+        <span class="dim" id="heat-count" style="font-size:12px"></span>
+      </div>
+      <div class="row" id="heat-filter-row" style="margin-top:12px">
+        <label class="dim" style="font-size:12px">回合
+          <select id="f-round"><option value="">全部</option></select>
+        </label>
+        <label class="dim" style="font-size:12px">阵营
+          <select id="f-side">
+            <option value="">全部</option>
+            <option value="ct">CT</option>
+            <option value="t">T</option>
+          </select>
+        </label>
+        <label class="dim" style="font-size:12px">武器
+          <select id="f-weapon"><option value="">全部</option></select>
+        </label>
+        <span class="dim" id="heat-filter-note" style="font-size:12px"></span>
+      </div>
+      <div class="row" id="heat-legend-row" style="margin-top:12px">
+        <span class="dim" style="font-size:12px">低</span>
+        <div id="heat-legend"></div>
+        <span class="dim" style="font-size:12px">高</span>
+      </div>
+      <div id="map-wrap" class="map-wrap">
+        <canvas id="map-canvas" width="1024" height="1024"></canvas>
+      </div>
+      <div id="chart-map" class="chart" style="margin-top:12px;display:none"></div>
+      <div class="dim" id="map-note" style="font-size:12px;margin-top:8px"></div>
+    </div>
+  </section>
+
+  <section id="page-replay" class="hidden">
+    <div class="card">
+      <h2>回合回放 <span class="dim" style="font-size:12px">按 awpy snapshots 重建的走位轨迹</span></h2>
+      <div class="row">
+        <label class="dim" style="font-size:12px">回合
+          <select id="r-round"></select>
+        </label>
+        <button class="btn" id="btn-play">播放</button>
+        <button class="btn ghost" id="btn-replay-reset">回到开头</button>
+        <label class="dim" style="font-size:12px">速度
+          <select id="r-speed">
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+            <option value="8">8×</option>
+          </select>
+        </label>
+        <span class="dim" id="r-info" style="font-size:12px"></span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input type="range" id="r-seek" min="0" max="0" value="0" style="flex:1;min-width:240px">
+        <span class="dim" id="r-clock" style="font-size:12px;min-width:110px"></span>
+      </div>
+      <div id="replay-wrap" class="map-wrap">
+        <canvas id="replay-canvas" width="1024" height="1024"></canvas>
+      </div>
+      <div class="row" id="replay-legend" style="margin-top:10px;font-size:12px"></div>
+      <div class="dim" id="replay-note" style="font-size:12px;margin-top:8px"></div>
+    </div>
+  </section>
+
+  <section id="page-compare" class="hidden">
+    <div class="card">
+      <h2>多场对比</h2>
+      <div class="row" id="cmp-summary"></div>
+    </div>
+    <div class="grid two">
+      <div class="card"><h2>比分与回合</h2><div id="chart-cmp-score" class="chart"></div></div>
+      <div class="card"><h2>经济曲线对比</h2><div id="chart-cmp-economy" class="chart"></div></div>
+    </div>
+    <div class="card">
+      <h2>玩家数据对比 <span class="dim" style="font-size:12px">同名玩家跨场对齐 · 点击表头排序</span></h2>
+      <div class="scroll"><table id="tbl-compare"></table></div>
+    </div>
+    <div class="card">
+      <h2>雷达图对比 <span class="dim" style="font-size:12px">每场 Rating 最高的玩家</span></h2>
+      <div id="chart-cmp-radar" class="chart tall"></div>
+    </div>
+  </section>
+
+</main>
+<div id="toast"></div>
+<script src="/static/vendor/echarts.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
