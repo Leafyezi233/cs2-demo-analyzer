@@ -83,10 +83,46 @@
       <!-- ---------------------------- 首页 ---------------------------- -->
       <section id="page-home" class="page">
         <div class="page-head">
-          <h1>工作台</h1>
-          <p class="dim">全部数据留在本机，不上传任何服务器。</p>
+          <h1>我的数据</h1>
+          <p class="dim">按账号统计你在库里所有比赛的表现。账号在「设置 › 我的账号」里添加。</p>
+          <div class="row" id="home-meta" style="margin-top:10px"></div>
         </div>
-        <div class="kpi-row" id="kpis"></div>
+        <div class="card">
+          <h2>统计账号 <span class="dim" id="ag-hint"></span></h2>
+          <div class="chips" id="ag-chips"></div>
+          <div class="empty hidden" id="ag-empty">还没有添加账号。点右上角「设置」，在「我的账号」里从已解析比赛的玩家中挑选。</div>
+          <div class="row hidden" id="ag-ctrl" style="margin-top:12px">
+            <span class="dim" style="font-size:12px">统计范围</span>
+            <select id="ag-range" style="min-width:130px">
+              <option value="0">全部比赛</option>
+              <option value="3">最近 3 场</option>
+              <option value="10">最近 10 场</option>
+              <option value="25">最近 25 场</option>
+            </select>
+            <span class="dim" style="font-size:12px">趋势指标</span>
+            <select id="ag-metric" style="min-width:130px"></select>
+            <span class="dim" id="ag-progress" style="font-size:12px"></span>
+          </div>
+        </div>
+        <div class="kpi-row hidden" id="ag-kpis" style="margin-top:16px"></div>
+        <div class="grid two" style="margin-top:16px">
+          <div class="card hidden" id="ag-trend-card">
+            <h2>场次趋势 <span class="dim" id="ag-trend-note"></span></h2>
+            <div class="chart" id="chart-ag-trend"></div>
+          </div>
+          <div class="card hidden" id="ag-radar-card">
+            <h2>能力雷达 <span class="dim">按平均值归一</span></h2>
+            <div class="chart" id="chart-ag-radar"></div>
+          </div>
+        </div>
+        <div class="card hidden" id="ag-summary-card" style="margin-top:16px">
+          <h2>账号汇总</h2>
+          <div class="scroll"><table id="tbl-ag"></table></div>
+        </div>
+        <div class="card hidden" id="ag-map-card" style="margin-top:16px">
+          <h2>按地图拆分</h2>
+          <div class="scroll"><table id="tbl-ag-map"></table></div>
+        </div>
         <div class="grid two" style="margin-top:16px">
           <div class="card">
             <h2>快速入口</h2>
@@ -331,6 +367,18 @@
               <select id="set-livecolor"><option value="1">跟随</option><option value="0">固定深色</option></select>
             </div>
           </div>
+        </div>
+        <div class="card">
+          <h2>我的账号 <span class="dim" id="id-count"></span></h2>
+          <p class="dim" style="font-size:12.5px;margin:0 0 10px">从已解析比赛的玩家中挑选你的 Steam 账号，首页会按这些账号统计全部比赛数据。steamid 只存浏览器本地。</p>
+          <div class="row">
+            <select id="id-add" style="min-width:260px;flex:1"></select>
+            <input id="id-alias" placeholder="备注名（可留空）" style="min-width:150px;flex:1">
+            <button class="btn primary" id="btn-id-add">添加</button>
+            <button class="btn ghost" id="btn-id-refresh">刷新名册</button>
+          </div>
+          <div class="chips" id="id-chips" style="margin-top:12px"></div>
+          <div class="empty hidden" id="id-none">还没有添加账号。刷新名册后会列出所有比赛里出现过的玩家。</div>
         </div>
         <div class="card">
           <h2>数据</h2>

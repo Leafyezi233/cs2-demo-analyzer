@@ -134,6 +134,7 @@ const state = {
   compare: [],
   sec: 'home', page: 'home',
   tasks: new Map(),
+  agSelected: new Set(), agRange: '0', agMetric: 'rating',
 };
 const charts = {};
 
@@ -200,6 +201,7 @@ function rebuildCharts() {
   if (state.compare.length) {
     renderCompareScore(); renderCompareEconomy(); renderCompareTable(); renderCompareRadar();
   }
+  renderHome();   // 首页账号图表同样要跟随主题重建
   setTimeout(() => Object.values(charts).forEach((c) => c.resize()), 60);
 }
 window.addEventListener('resize', () => Object.values(charts).forEach((c) => c.resize()));
@@ -258,10 +260,6 @@ function go(page) {
 $('#nav').addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.id === 'nav-analysis') {                     // 折叠组：点击标题先展开
-    const g = $('#grp-analysis');
-    if (!state.matchId && !g.classList.contains('open')) { g.classList.add('open'); return; }
-  }
   if (b.classList.contains('nav-item') && b.dataset.page) { go(b.dataset.page); return; }
   if (b.classList.contains('nav-item') && !b.dataset.page) {
     const sec = b.dataset.sec;
@@ -297,9 +295,14 @@ async function loadMatches() {
   const list = await api('/api/matches');
   state.matches = list;
   state.selected = new Set([...state.selected].filter((id) => list.some((m) => m.id === id)));
+  /* 比赛列表变了：丢弃已删除场的缓存，默认勾选新加入的账号 */
+  const ids = new Set(list.map((m) => m.id));
+  [...playerCache.keys()].forEach((id) => { if (!ids.has(id)) playerCache.delete(id); });
   $('#sf-matches').textContent = list.length;
   renderMatchSelect();
+  await ensureRoster();          // 名册与聚合都靠 playerCache，这里一次性补齐
   renderHome();
+  renderIdentityPanel();
   renderStatsPicker();
   syncCompareBar();
 }
@@ -354,8 +357,164 @@ function syncCompareBar() {
   $('#sel-count').textContent = n ? '已选 ' + n + ' 场' : '';
 }
 
-/* ================================================================== 首页 */
+/* ==================================================== 我的账号（身份层） */
+/* 清单并入 settings.identities，不另开 localStorage 键，避免配置分裂。 */
+function getIdentities() {
+  const list = settings.identities;
+  return Array.isArray(list) ? list.filter((x) => x && x.steamid) : [];
+}
+function saveIdentities(list) {
+  settings.identities = list.map((x) => ({
+    steamid: String(x.steamid),
+    alias: x.alias == null ? '' : String(x.alias).slice(0, 40),
+  }));
+  saveSettings();
+}
+/* 账号候选名册：遍历库里每场比赛的 /players，按 steamid 归并。
+ * 结果缓存在 playerCache（matchId → 该场玩家行），名册与聚合共用，一次请求两处用。 */
+const playerCache = new Map();
+
+async function loadPlayerRows(matchId) {
+  if (playerCache.has(matchId)) return playerCache.get(matchId);
+  const rows = (await api('/api/matches/' + matchId + '/players')) || [];
+  playerCache.set(matchId, rows);
+  return rows;
+}
+function invalidateMatchCache(matchId) {
+  playerCache.delete(matchId);
+}
+/* 增量补齐名册：已缓存的比赛不再请求 */
+async function ensureRoster() {
+  const todo = state.matches.map((m) => m.id).filter((id) => !playerCache.has(id));
+  for (let i = 0; i < todo.length; i++) {
+    try { await loadPlayerRows(todo[i]); }
+    catch (e) { playerCache.set(todo[i], []); }   // 单场失败不阻塞其它场
+  }
+  return roster();
+}
+function roster() {
+  const r = new Map();
+  state.matches.forEach((m) => (playerCache.get(m.id) || []).forEach((p) => {
+    if (!p || p.steamid == null) return;
+    const e = r.get(p.steamid) || { steamid: String(p.steamid), name: null, team: '', count: 0 };
+    if (p.name && !e.name) e.name = p.name;
+    if (p.team_clan_name) e.team = p.team_clan_name;
+    e.count++;
+    r.set(String(p.steamid), e);
+  }));
+  return r;
+}
+function identityName(steamid, r) {
+  const id = getIdentities().find((x) => x.steamid === steamid);
+  if (id && id.alias) return id.alias;
+  const e = (r || roster()).get(steamid);
+  return (e && e.name) || id && id.alias || steamid;
+}
+
+/* ==================================================== 聚合层（纯前端） */
+/* 场次顺序：state.matches 即后端返回顺序（新的在前）。 */
+function matchListForAgg() {
+  const n = Number(state.agRange) || 0;
+  return n > 0 ? state.matches.slice(0, n) : state.matches;
+}
+function isSideWin(side, m) {
+  if (side === 'counter-terrorist') return m.ct_score > m.t_score ? 1 : (m.ct_score < m.t_score ? 0 : null);
+  if (side === 'terrorist') return m.t_score > m.ct_score ? 1 : (m.t_score < m.ct_score ? 0 : null);
+  return null;
+}
+/* 一个账号在统计范围内的逐场记录 */
+function aggRows(steamid) {
+  const out = [];
+  matchListForAgg().forEach((m) => {
+    const p = (playerCache.get(m.id) || []).find((x) => String(x.steamid) === String(steamid));
+    if (!p) return;
+    out.push({ m, p, win: isSideWin(p.side, m) });
+  });
+  return out;
+}
+/* 计数类字段求和；比率类字段按 rounds_played 加权平均 */
+const AGG_SUM = ['rounds_played', 'kills', 'deaths', 'assists', 'flash_assists', 'headshot_kills',
+  'opening_kills', 'opening_deaths', 'traded_deaths', 'multikill_2k', 'multikill_3k',
+  'multikill_4k', 'multikill_5k', 'clutches_played', 'clutches_won', 'utility_damage',
+  'flashes_thrown', 'enemies_flashed'];
+const AGG_RATE = ['rating', 'adr', 'kast', 'headshot_pct'];
+
+function aggSummary(rows) {
+  const s = { games: rows.length, rounds: 0, kills: 0, deaths: 0, assists: 0, w: 0, l: 0, u: 0, maps: {} };
+  /* rounds 是 rounds_played 的别名，KPI「总回合」直接读它 */
+  AGG_SUM.forEach((k) => { s[k] = 0; });
+  AGG_RATE.forEach((k) => { s[k] = 0; });
+  const wr = rows.reduce((a, r) => a + (r.p.rounds_played || 0), 0) || 1;
+  rows.forEach((r) => {
+    AGG_SUM.forEach((k) => { s[k] += Number(r.p[k]) || 0; });
+    AGG_RATE.forEach((k) => { s[k] += (Number(r.p[k]) || 0) * (r.p.rounds_played || 0); });
+    if (r.win == null) s.u++; else if (r.win) s.w++; else s.l++;
+    const mk = r.m.map_name || '未知';
+    s.maps[mk] = s.maps[mk] || { map: mk, games: 0, rounds: 0, kills: 0, deaths: 0, assists: 0, rating: 0, adr: 0, kast: 0, w: 0, l: 0 };
+    const g = s.maps[mk];
+    g.games++; g.rounds += Number(r.p.rounds_played) || 0;
+    g.kills += Number(r.p.kills) || 0; g.deaths += Number(r.p.deaths) || 0; g.assists += Number(r.p.assists) || 0;
+    const rw = r.p.rounds_played || 1;
+    g.rating += (Number(r.p.rating) || 0) * rw;
+    g.adr += (Number(r.p.adr) || 0) * rw;
+    g.kast += (Number(r.p.kast) || 0) * rw;
+    if (r.win == null) { /* 无阵营信息不记胜负 */ } else if (r.win) g.w++; else g.l++;
+  });
+  AGG_RATE.forEach((k) => { s[k] /= wr; });
+  s.rounds = s.rounds_played;   // KPI「总回合」读 rounds，AGG_SUM 求和的字段名是 rounds_played
+  Object.values(s.maps).forEach((g) => {
+    const w = g.rounds || 1;
+    g.rating /= w; g.adr /= w; g.kast /= w;
+    g.kd = g.deaths ? g.kills / g.deaths : g.kills;
+  });
+  s.kd = s.deaths ? s.kills / s.deaths : s.kills;
+  s.winRate = s.w + s.l ? s.w / (s.w + s.l) : null;
+  return s;
+}
+
+/* ================================================ 首页：按账号聚合渲染 */
+/* 保留库里级信息（最近比赛 / 解析队列），主体改为账号维度。 */
+const AG_METRICS = [
+  ['rating', 'Rating≈'], ['adr', 'ADR'], ['kast', 'KAST'], ['headshot_pct', '爆头率'],
+  ['opening_kills', '首杀'], ['utility_damage', '道具伤害'],
+];
+
+function agSelected() {
+  return getIdentities().filter((x) => state.agSelected.has(x.steamid));
+}
+function agToggle(steamid) {
+  if (state.agSelected.has(steamid)) state.agSelected.delete(steamid);
+  else state.agSelected.add(steamid);
+  state.agDirty = true;
+  renderHome();
+}
 function renderHome() {
+  renderHomeLibrary();
+  renderAgChips();
+  const ids = agSelected();
+  const rows = ids.map((x) => ({ id: x, rows: aggRows(x.steamid) }));
+  const shown = rows.filter((r) => r.rows.length);
+  $('#ag-empty').classList.toggle('hidden', getIdentities().length > 0);
+  $('#ag-hint').textContent = getIdentities().length
+    ? getIdentities().length + ' 个账号 · 已选 ' + ids.length : '';
+  const ctrl = $('#ag-ctrl');
+  if (ctrl) ctrl.classList.toggle('hidden', !ids.length);
+  const have = shown.length > 0;
+  ['ag-kpis', 'ag-summary-card', 'ag-map-card', 'ag-trend-card', 'ag-radar-card'].forEach((id) => {
+    $('#' + id).classList.toggle('hidden', !have);
+  });
+  if (!have) {
+    $('#ag-kpis').innerHTML = '';
+    ['chart-ag-trend', 'chart-ag-radar'].forEach((id) => { const c = charts[id]; if (c) c.clear(); });
+    return;
+  }
+  renderAgKpis(shown);
+  renderAgTrend(shown);
+  renderAgRadar(shown);
+  renderAgTable(shown);
+  renderAgMap(shown);
+}
+function renderHomeLibrary() {
   const box = $('#home-matches');
   if (!box) return;
   const list = state.matches.slice(0, 4);
@@ -368,23 +527,278 @@ function renderHome() {
     box.appendChild(div);
   });
   $('#home-no-matches').classList.toggle('hidden', state.matches.length > 0);
-
-  const totalRounds = state.matches.reduce((s, m) => s + (m.round_count || 0), 0);
-  const totalMin = Math.round(state.matches.reduce((s, m) => s + (m.playback_time || 0), 0) / 60);
-  const running = [...state.tasks.values()].filter((t) => t.status === 'pending' || t.status === 'running').length;
   const last = state.matches[0];
-  $('#kpis').innerHTML = [
-    ['比赛总数', state.matches.length, state.matches.length ? '本机已解析' : '去「导入」添加'],
-    ['总回合数', totalRounds, '全部比赛合计'],
-    ['总时长', totalMin + ' 分', '按 playback_time 累计'],
-    ['解析中', running, running ? '队列运行中' : '队列空闲'],
-  ].map(([k, v, s]) =>
-    '<div class="kpi"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>'
-  ).join('') + (last
-    ? '<div class="kpi"><div class="k">最近导入</div><div class="v" style="font-size:15px">' +
-      escapeHtml(last.map_name || '?') + '</div><div class="s">' + last.ct_score + ' : ' + last.t_score + '</div></div>'
-    : '');
+  const meta = $('#home-meta');
+  if (meta) {
+    meta.innerHTML = [
+      ['比赛', state.matches.length],
+      ['总回合', state.matches.reduce((s, m) => s + (m.round_count || 0), 0)],
+      ['总时长', Math.round(state.matches.reduce((s, m) => s + (m.playback_time || 0), 0) / 60) + ' 分'],
+    ].map(([k, v]) => '<span class="pill">' + k + ' ' + v + '</span>').join('') +
+      ([...state.tasks.values()].filter((t) => t.status === 'pending' || t.status === 'running').length
+        ? '<span class="pill">解析中 ' + [...state.tasks.values()].filter((t) => t.status === 'pending' || t.status === 'running').length + '</span>' : '') +
+      (last ? '<span class="pill">最近 ' + escapeHtml(last.map_name || '?') + ' ' + last.ct_score + ':' + last.t_score + '</span>' : '');
+  }
 }
+/* 账号 chips：显示该账号在统计范围内的出场数与胜负，点击切换是否统计 */
+function renderAgChips() {
+  const box = $('#ag-chips');
+  if (!box) return;
+  const r = roster();
+  const ids = getIdentities();
+  if (!ids.length) { box.innerHTML = ''; return; }
+  box.innerHTML = ids.map((x) => {
+    const on = state.agSelected.has(x.steamid);
+    const rows = on ? aggRows(x.steamid) : [];
+    const w = rows.filter((r2) => r2.win).length, l = rows.filter((r2) => r2.win === 0).length;
+    return '<span class="chip' + (on ? ' on' : '') + '" data-sid="' + escapeAttr(x.steamid) + '">' +
+      '<span class="cn">' + escapeHtml(identityName(x.steamid, r)) + '</span>' +
+      '<span class="cs">' + rows.length + ' 场' + (l ? ' <span class="win">' + w + '-' + l + '</span>' : '') + '</span>' +
+      '<button class="x" title="从清单移除" data-rm="' + escapeAttr(x.steamid) + '">×</button>' +
+      '</span>';
+  }).join('');
+}
+$('#ag-chips') && $('#ag-chips').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-rm]');
+  const chip = e.target.closest('[data-sid]');
+  if (rm) {
+    saveIdentities(getIdentities().filter((x) => x.steamid !== rm.dataset.rm));
+    state.agSelected.delete(rm.dataset.rm);
+    renderHome();
+    renderIdentityPanel();
+    return;
+  }
+  if (chip) agToggle(chip.dataset.sid);
+});
+(function initAgMetric() {
+  const sel = $('#ag-metric');
+  sel.innerHTML = AG_METRICS.map((m) => '<option value="' + m[0] + '">' + m[1] + '</option>').join('');
+  sel.value = state.agMetric;
+  sel.addEventListener('change', (e) => { state.agMetric = e.target.value; renderHome(); });
+  $('#ag-range').value = state.agRange;
+})();
+$('#ag-range').addEventListener('change', (e) => {
+  state.agRange = e.target.value;
+  renderHome();
+});
+function renderAgKpis(shown) {
+  const n = shown.length;
+  const agg = shown.map((r) => aggSummary(r.rows));
+  const tot = agg.reduce((a, s) => ({
+    games: a.games + s.games, rounds: a.rounds + s.rounds, kills: a.kills + s.kills,
+    deaths: a.deaths + s.deaths, w: a.w + s.w, l: a.l + s.l,
+  }), { games: 0, rounds: 0, kills: 0, deaths: 0, w: 0, l: 0 });
+  const wr = tot.w + tot.l ? Math.round(tot.w / (tot.w + tot.l) * 100) : null;
+  const kd = tot.deaths ? (tot.kills / tot.deaths).toFixed(2) : '-';
+  const avg = (k) => (agg.reduce((a, s) => a + s[k], 0) / (n || 1)).toFixed(2);
+  $('#ag-kpis').innerHTML = [
+    ['账号', n, '已选账号中参与过比赛的'],
+    ['场次', tot.games, '所选账号出场合计'],
+    ['总回合', tot.rounds, 'rounds_played 合计'],
+    ['胜率', wr == null ? '-' : wr + '%', tot.w + ' 胜 ' + tot.l + ' 负'],
+    ['平均 Rating', avg('rating'), '按回合加权'],
+    ['平均 ADR', avg('adr'), '按回合加权'],
+    ['平均 KAST', avg('kast'), '按回合加权'],
+    ['KD', kd, tot.kills + ' 杀 / ' + tot.deaths + ' 死'],
+  ].map(([k, v, s]) => '<div class="kpi"><div class="k">' + k + '</div><div class="v">' + v +
+    '</div><div class="s">' + s + '</div></div>').join('');
+}
+/* 库里若只有同一份 demo 的多次解析，折线会退化成一条水平线 —— 这是数据事实，
+ * 不在这里伪造跨度掩盖它；等导入不同 demo 后自然展开。 */
+function renderAgTrend(shown) {
+  const c = chart('chart-ag-trend');
+  if (!c) return;
+  const key = state.agMetric || 'rating';
+  const labels = shown.map((r) => identityName(r.id.steamid));
+  /* 序列按场次（state.matches 顺序，最新在右）逐点；账号缺场则跳过 */
+  const ms = matchListForAgg().map((m) => m).reverse();
+  const series = shown.map((r, i) => ({
+    name: labels[i],
+    type: 'line', smooth: true, connectNulls: true, symbolSize: 6,
+    data: ms.map((m) => {
+      const hit = r.rows.find((x) => x.m.id === m.id);
+      return hit ? Number(hit.p[key]) || 0 : null;
+    }),
+    itemStyle: { color: CMP_COLORS[i % CMP_COLORS.length] },
+  }));
+  $('#ag-trend-note').textContent = (AG_METRICS.find((x) => x[0] === key) || ['', key])[1] + ' · 共 ' + ms.length + ' 场';
+  c.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis' },
+    legend: Object.assign({ data: labels }, legendStyle(true)),
+    grid: { left: 46, right: 24, top: 36, bottom: 52 },
+    xAxis: Object.assign({ type: 'category', data: ms.map((m) => (m.map_name || '?') + ' ' + (m.round_count || 0)) + 'R' },
+      axisStyle({ boundaryGap: false })),
+    yAxis: Object.assign({ type: 'value', name: key, scale: true, nameTextStyle: { color: P().dim } }, axisStyle()),
+    series,
+  }, true);
+}
+function renderAgRadar(shown) {
+  const c = chart('chart-ag-radar');
+  if (!c) return;
+  const r = roster();
+  /* 归一：跨账号取最大值（比场间混合更可比），仍可用固定上限 */
+  const caps = (k) => settings.radar === 'fixed' ? RADAR_CAPS[k]
+    : Math.max(1, ...shown.map((x) => aggSummary(x.rows)[k]));
+  const vals = shown.map((x) => aggSummary(x.rows));
+  c.setOption({
+    backgroundColor: 'transparent',
+    tooltip: {},
+    legend: Object.assign({ data: shown.map((x, i) => identityName(x.id.steamid, r)) }, legendStyle(true)),
+    radar: {
+      indicator: RADAR_DIMS.map((d) => ({ name: d[1], max: 1 })),
+      radius: '60%', center: ['50%', '46%'],
+      axisName: { color: P().dim, fontSize: 11 },
+      splitLine: { lineStyle: { color: P().line } },
+      splitArea: { areaStyle: { color: [rgbaVar('--fg', .015), rgbaVar('--fg', .04)] } },
+      axisLine: { lineStyle: { color: P().line } },
+    },
+    series: [{
+      type: 'radar',
+      data: shown.map((x, i) => ({
+        value: RADAR_DIMS.map((d) => Math.min(1, (Number(vals[i][d[0]]) || 0) / caps(d[0]))),
+        name: identityName(x.id.steamid, r),
+        itemStyle: { color: CMP_COLORS[i % CMP_COLORS.length] },
+        areaStyle: { opacity: 0.12 },
+      })),
+    }],
+  }, true);
+}
+const AG_COLS = [
+  ['name', '账号', 's'], ['games', '场次', 'n'], ['rounds', '回合', 'n'], ['w', '胜', 'n'], ['l', '负', 'n'],
+  ['winRate', '胜率', 'n'], ['rating', 'Rating≈', 'n'], ['kills', 'K', 'n'], ['deaths', 'D', 'n'],
+  ['assists', 'A', 'n'], ['kd', 'KD', 'n'], ['adr', 'ADR', 'n'], ['kast', 'KAST', 'n'],
+  ['headshot_pct', '爆头', 'n'], ['opening_kills', '首杀', 'n'], ['opening_deaths', '首死', 'n'],
+  ['clutches_won', '残局胜', 'n'], ['utility_damage', '道具伤害', 'n'],
+];
+let agSort = { key: 'rating', asc: false };
+function renderAgTable(shown) {
+  const r = roster();
+  const rows = shown.map((x) => {
+    const s = aggSummary(x.rows);
+    s.name = identityName(x.id.steamid, r);
+    s.steamid = x.id.steamid;
+    return s;
+  });
+  rows.sort((a, b) => {
+    const av = a[agSort.key], bv = b[agSort.key];
+    const c = typeof av === 'string' ? String(av).localeCompare(String(bv)) : (Number(av) || 0) - (Number(bv) || 0);
+    return agSort.asc ? c : -c;
+  });
+  const arrow = (k) => agSort.key === k ? (agSort.asc ? ' ▲' : ' ▼') : '';
+  let html = '<thead><tr>' + AG_COLS.map((c) => '<th data-k="' + c[0] + '" class="' + (c[2] === 's' ? 'l' : '') + '">' +
+    c[1] + arrow(c[0]) + '</th>').join('') + '</tr></thead><tbody>';
+  rows.forEach((x) => {
+    html += '<tr>' + AG_COLS.map((c) => {
+      let v = x[c[0]];
+      if (c[0] === 'name') v = escapeHtml(v);
+      else if (c[0] === 'winRate') v = v == null ? '-' : Math.round(v * 100) + '%';
+      else if (typeof v === 'number') v = (c[0] === 'rating' || c[0] === 'adr' || c[0] === 'kast' ||
+        c[0] === 'headshot_pct' || c[0] === 'kd') ? v.toFixed(2) : v;
+      else v = escapeHtml(v == null ? '-' : v);
+      return '<td class="' + (c[2] === 's' ? 'l' : '') + '">' + v + '</td>';
+    }).join('') + '</tr>';
+  });
+  const tbl = $('#tbl-ag');
+  tbl.innerHTML = html + '</tbody>';
+  tbl.querySelectorAll('th').forEach((th) => th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    if (agSort.key === k) agSort.asc = !agSort.asc; else { agSort.key = k; agSort.asc = false; }
+    renderAgTable(shown);
+  }));
+}
+function renderAgMap(shown) {
+  const r = roster();
+  /* 行 = 账号 × 地图，列 = 同一组指标 */
+  const rows = [];
+  shown.forEach((x) => {
+    const s = aggSummary(x.rows);
+    Object.values(s.maps).forEach((g) => {
+      g.name = identityName(x.id.steamid, r);
+      g.steamid = x.id.steamid;
+      g.winRate = g.w + g.l ? g.w / (g.w + g.l) : null;
+      rows.push(g);
+    });
+  });
+  rows.sort((a, b) => (b.rounds || 0) - (a.rounds || 0));
+  const cols = [['name', '账号', 's'], ['map', '地图', 's'], ['games', '场次', 'n'], ['rounds', '回合', 'n'],
+    ['w', '胜', 'n'], ['l', '负', 'n'], ['winRate', '胜率', 'n'], ['rating', 'Rating≈', 'n'],
+    ['kills', 'K', 'n'], ['deaths', 'D', 'n'], ['kd', 'KD', 'n'], ['adr', 'ADR', 'n'], ['kast', 'KAST', 'n']];
+  let html = '<thead><tr>' + cols.map((c) => '<th class="' + (c[2] === 's' ? 'l' : '') + '">' + c[1] + '</th>').join('') +
+    '</tr></thead><tbody>';
+  rows.forEach((x) => {
+    html += '<tr>' + cols.map((c) => {
+      let v = x[c[0]];
+      if (c[0] === 'name') v = escapeHtml(v);
+      else if (c[0] === 'map') v = escapeHtml(v);
+      else if (c[0] === 'winRate') v = v == null ? '-' : Math.round(v * 100) + '%';
+      else if (typeof v === 'number') v = (c[0] === 'rating' || c[0] === 'adr' || c[0] === 'kast' || c[0] === 'kd')
+        ? v.toFixed(2) : v;
+      else v = escapeHtml(v == null ? '-' : v);
+      return '<td class="' + (c[2] === 's' ? 'l' : '') + '">' + v + '</td>';
+    }).join('') + '</tr>';
+  });
+  $('#tbl-ag-map').innerHTML = html + '</tbody>';
+}
+
+/* --------------------------------------------------- 设置页：我的账号面板 */
+function renderIdentityPanel() {
+  const box = $('#id-chips');
+  if (!box) return;
+  const r = roster();
+  const ids = getIdentities();
+  $('#id-count').textContent = ids.length ? ids.length + ' 个' : '';
+  $('#id-none').classList.toggle('hidden', ids.length > 0);
+  box.innerHTML = ids.map((x) => {
+    const e = r.get(x.steamid);
+    return '<span class="chip on" title="' + escapeAttr(x.steamid) + '">' +
+      '<span class="cn">' + escapeHtml(x.alias || identityName(x.steamid, r)) + '</span>' +
+      '<span class="cs">' + (e ? e.count + ' 场' : '库中无记录') + (e && e.team ? ' · ' + escapeHtml(e.team) : '') + '</span>' +
+      '<button class="x" title="移除" data-idrm="' + escapeAttr(x.steamid) + '">×</button></span>';
+  }).join('');
+  /* 候选下拉：库中出现过的全部玩家，已添加的排除 */
+  const sel = $('#id-add');
+  const cand = [...r.values()].filter((e) => !ids.some((x) => x.steamid === e.steamid))
+    .sort((a, b) => b.count - a.count || String(a.name).localeCompare(String(b.name)));
+  const keep = sel.value;
+  sel.innerHTML = cand.length
+    ? cand.map((e) => '<option value="' + escapeAttr(e.steamid) + '">' +
+        escapeHtml((e.name || '(未知)') + ' · ' + e.count + ' 场' + (e.team ? ' · ' + e.team : '')) +
+        '</option>').join('')
+    : '<option value="">名册为空，先导入比赛</option>';
+  if (cand.some((e) => e.steamid === keep)) sel.value = keep;
+}
+$('#id-chips').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-idrm]');
+  if (!rm) return;
+  saveIdentities(getIdentities().filter((x) => x.steamid !== rm.dataset.idrm));
+  state.agSelected.delete(rm.dataset.idrm);
+  renderIdentityPanel();
+  renderHome();
+});
+$('#btn-id-add').addEventListener('click', () => {
+  const steamid = $('#id-add').value;
+  if (!steamid) { toast('没有可添加的玩家', true); return; }
+  const alias = $('#id-alias').value.trim();
+  const list = getIdentities();
+  if (list.some((x) => x.steamid === steamid)) { toast('已经在清单里了', true); return; }
+  list.push({ steamid, alias });
+  saveIdentities(list);
+  $('#id-alias').value = '';
+  if (!state.agSelected.has(steamid)) state.agSelected.add(steamid);
+  renderIdentityPanel();
+  renderHome();
+  toast('已添加 ' + identityName(steamid));
+});
+$('#btn-id-refresh').addEventListener('click', async () => {
+  [...playerCache.keys()].forEach((k) => playerCache.delete(k));
+  $('#id-count').textContent = '刷新中…';
+  await ensureRoster();
+  renderIdentityPanel();
+  renderHome();
+  toast('名册已刷新：' + roster().size + ' 名玩家');
+});
+$('#id-add').addEventListener('change', () => { $('#id-alias').value = ''; });
 
 /* ================================================================ 导入页 */
 const drop = $('#drop');
@@ -504,6 +918,8 @@ async function openMatch(id) {
   }
   const m = await api('/api/matches/' + id);
   state.match = m;
+  /* 名册缓存同步这一场的玩家行（刚解析完的比赛要能立即进统计） */
+  loadPlayerRows(id).then(() => { if (state.sec === 'home') renderHome(); }).catch(() => {});
   renderMatchSelect();
   $('#match-title').textContent = (m.map_name || '?') + '  ·  ' + m.ct_score + ' : ' + m.t_score + ' · ' + m.file_name;
   $('#match-meta').innerHTML =
@@ -1383,5 +1799,8 @@ window.addEventListener('hashchange', () => {
 /* ================================================================== 启动 */
 applySettings();
 HEAT_LUT = buildHeatLUT();
+/* 默认统计所有已添加账号（用户可在首页 chips 上取消勾选） */
+if (getIdentities().length) state.agSelected = new Set(getIdentities().map((x) => x.steamid));
+if (state.agMetric) $('#ag-metric').value = state.agMetric;
 applyHash();   // 先同步 UI，避免旧 hash 时闪一下首页
 loadMatches().catch((e) => toast('加载比赛列表失败：' + e.message, true));
