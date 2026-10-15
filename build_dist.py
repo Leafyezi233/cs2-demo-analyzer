@@ -22,7 +22,9 @@ def _find_pysrc():
     for base in (os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA")):
         if base:
             cands.append(Path(base) / "uv" / "python" / "cpython-3.13.15-windows-x86_64-none")
-    cands.append(Path("%USERPROFILE%/AppData/Roaming/uv/python/cpython-3.13.15-windows-x86_64-none"))
+    home = os.environ.get("USERPROFILE")
+    if home:
+        cands.append(Path(home) / "AppData" / "Roaming" / "uv" / "python" / "cpython-3.13.15-windows-x86_64-none")
     for c in cands:
         if c.is_dir():
             return c
