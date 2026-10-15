@@ -5,169 +5,363 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CS2 数据面板</title>
 <link rel="stylesheet" href="/static/style.css">
+<script>
+  // 在 CSS 生效前定主题，避免刷新时闪白。
+  // 主题存放在 cs2panel.settings（与 app.js 的设置层同一个 key）；
+  // cs2panel.theme 是早期版本遗留的 key，保留读取以兼容老数据。
+  (function () {
+    var t = 'dark';
+    try {
+      var s = JSON.parse(localStorage.getItem('cs2panel.settings') || '{}');
+      if (s && s.theme) t = s.theme;
+      else if (localStorage.getItem('cs2panel.theme')) t = localStorage.getItem('cs2panel.theme');
+    } catch (e) { /* 用默认深色 */ }
+    document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+  })();
+</script>
 </head>
 <body>
-<header>
-  <h1>CS2 数据面板</h1>
-  <nav>
-    <button data-page="home" class="active">首页</button>
-    <button data-page="match" class="hidden" id="nav-match">比赛</button>
-    <button data-page="players" class="hidden" id="nav-players">玩家</button>
-    <button data-page="map" class="hidden" id="nav-map">地图</button>
-    <button data-page="replay" class="hidden" id="nav-replay">回放</button>
-    <button data-page="compare" class="hidden" id="nav-compare">对比</button>
-  </nav>
-  <span class="dim" id="ctx" style="margin-left:auto;font-size:12px"></span>
-</header>
-<main>
+<div class="shell">
 
-  <section id="page-home">
-    <div class="card">
-      <h2>导入 demo</h2>
-      <div class="drop" id="drop">
-        <div style="font-size:15px;margin-bottom:6px">把 .dem 文件拖到这里，或点击选择</div>
-        <div style="font-size:12px">支持 CS2（Source 2）demo；解析在后台进行，完成后自动打开比赛页</div>
-      </div>
-      <input type="file" id="file" accept=".dem" class="hidden">
-      <div class="row" style="margin-top:14px">
-        <button class="btn ghost" id="btn-scan">扫描本机录像</button>
-        <span class="dim" id="scan-hint" style="font-size:12px"></span>
-      </div>
-      <div id="scan-list" style="margin-top:12px"></div>
-      <div id="task-box" class="hidden" style="margin-top:14px">
-        <div class="row"><b id="task-name"></b><span class="dim" id="task-stage"></span></div>
-        <div class="bar"><i id="task-bar"></i></div>
-      </div>
+  <!-- ============================ 侧边栏 ============================ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="brand-mark">CS2</span>
+      <span class="brand-text">数据面板</span>
     </div>
-    <div class="card">
-      <h2>已解析的比赛 <span class="dim" id="match-count" style="font-size:12px"></span></h2>
-      <div class="row" style="margin-bottom:10px">
-        <button class="btn" id="btn-compare" disabled>对比选中的比赛</button>
-        <button class="btn ghost" id="btn-clear-sel">清空选择</button>
-        <span class="dim" id="sel-hint" style="font-size:12px">勾选 2 场以上可比对</span>
-      </div>
-      <div class="matches" id="matches"></div>
-      <div class="empty hidden" id="no-matches">还没有解析过比赛</div>
-    </div>
-  </section>
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-sec="home" data-page="home">
+        <span class="ni-ico">◈</span><span>首页</span>
+      </button>
+      <button class="nav-item" data-sec="import" data-page="import">
+        <span class="ni-ico">⇪</span><span>导入</span>
+      </button>
 
-  <section id="page-match" class="hidden">
-    <div class="card">
-      <h2 id="match-title">比赛</h2>
-      <div class="row" id="match-meta"></div>
-    </div>
-    <div class="grid two">
-      <div class="card"><h2>经济曲线</h2><div id="chart-economy" class="chart"></div></div>
-      <div class="card"><h2>回合结果</h2><div id="chart-rounds" class="chart"></div></div>
-    </div>
-    <div class="card">
-      <h2>回合明细</h2>
-      <div class="scroll"><table id="tbl-rounds"></table></div>
-    </div>
-  </section>
+      <div class="nav-group" id="grp-analysis">
+        <button class="nav-item" data-sec="analysis" id="nav-analysis">
+          <span class="ni-ico">◧</span><span>分析</span>
+          <span class="grow"></span><span class="ni-ico dim" id="grp-caret">▾</span>
+        </button>
+        <div class="nav-sub">
+          <div>
+            <button class="nav-subitem" data-sec="analysis" data-page="match" disabled>概览</button>
+            <button class="nav-subitem" data-sec="analysis" data-page="players" disabled>玩家</button>
+            <button class="nav-subitem" data-sec="analysis" data-page="map" disabled>地图</button>
+            <button class="nav-subitem" data-sec="analysis" data-page="replay" disabled>回放</button>
+          </div>
+        </div>
+      </div>
 
-  <section id="page-players" class="hidden">
-    <div class="card">
-      <h2>记分板 <span class="dim" style="font-size:12px">点击表头排序 · 点击行看雷达图</span></h2>
-      <div class="scroll"><table id="tbl-players"></table></div>
+      <button class="nav-item" data-sec="stats" data-page="compare">
+        <span class="ni-ico">▤</span><span>统计</span>
+      </button>
+      <button class="nav-item" data-sec="settings" data-page="settings">
+        <span class="ni-ico">⚙</span><span>设置</span>
+      </button>
+    </nav>
+    <div class="side-foot" id="side-foot">
+      <div>比赛 <b id="sf-matches">0</b> 场</div>
+      <div>本机运行 · 无需联网</div>
     </div>
-    <div class="grid two">
-      <div class="card"><h2 id="radar-title">雷达图</h2><div id="chart-radar" class="chart"></div></div>
-      <div class="card"><h2>ADR / KAST 对比</h2><div id="chart-adr" class="chart"></div></div>
-    </div>
-  </section>
+  </aside>
+  <div class="scrim" id="scrim"></div>
 
-  <section id="page-map" class="hidden">
-    <div class="card">
-      <h2>地图分布</h2>
-      <div class="row">
-        <span class="pill" id="map-name"></span>
-        <button class="btn ghost" data-heat="kills">击杀</button>
-        <button class="btn ghost" data-heat="deaths">死亡</button>
-        <button class="btn ghost" data-heat="shots">射击</button>
-        <span class="dim" id="heat-count" style="font-size:12px"></span>
+  <!-- ============================ 主区域 ============================ -->
+  <div class="main-col">
+    <header class="topbar">
+      <button class="icon-btn" id="btn-menu" aria-label="菜单">☰</button>
+      <div class="picker">
+        <span class="picker-label">当前比赛</span>
+        <select id="match-select"><option value="">未选择比赛</option></select>
       </div>
-      <div class="row" id="heat-filter-row" style="margin-top:12px">
-        <label class="dim" style="font-size:12px">回合
-          <select id="f-round"><option value="">全部</option></select>
-        </label>
-        <label class="dim" style="font-size:12px">阵营
-          <select id="f-side">
-            <option value="">全部</option>
-            <option value="ct">CT</option>
-            <option value="t">T</option>
-          </select>
-        </label>
-        <label class="dim" style="font-size:12px">武器
-          <select id="f-weapon"><option value="">全部</option></select>
-        </label>
-        <span class="dim" id="heat-filter-note" style="font-size:12px"></span>
-      </div>
-      <div class="row" id="heat-legend-row" style="margin-top:12px">
-        <span class="dim" style="font-size:12px">低</span>
-        <div id="heat-legend"></div>
-        <span class="dim" style="font-size:12px">高</span>
-      </div>
-      <div id="map-wrap" class="map-wrap">
-        <canvas id="map-canvas" width="1024" height="1024"></canvas>
-      </div>
-      <div id="chart-map" class="chart" style="margin-top:12px;display:none"></div>
-      <div class="dim" id="map-note" style="font-size:12px;margin-top:8px"></div>
-    </div>
-  </section>
+      <span class="grow"></span>
+      <button class="btn ghost sm" id="btn-theme" title="切换主题">深色</button>
+    </header>
 
-  <section id="page-replay" class="hidden">
-    <div class="card">
-      <h2>回合回放 <span class="dim" style="font-size:12px">按 awpy snapshots 重建的走位轨迹</span></h2>
-      <div class="row">
-        <label class="dim" style="font-size:12px">回合
-          <select id="r-round"></select>
-        </label>
-        <button class="btn" id="btn-play">播放</button>
-        <button class="btn ghost" id="btn-replay-reset">回到开头</button>
-        <label class="dim" style="font-size:12px">速度
-          <select id="r-speed">
-            <option value="0.5">0.5×</option>
-            <option value="1" selected>1×</option>
-            <option value="2">2×</option>
-            <option value="4">4×</option>
-            <option value="8">8×</option>
-          </select>
-        </label>
-        <span class="dim" id="r-info" style="font-size:12px"></span>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <input type="range" id="r-seek" min="0" max="0" value="0" style="flex:1;min-width:240px">
-        <span class="dim" id="r-clock" style="font-size:12px;min-width:110px"></span>
-      </div>
-      <div id="replay-wrap" class="map-wrap">
-        <canvas id="replay-canvas" width="1024" height="1024"></canvas>
-      </div>
-      <div class="row" id="replay-legend" style="margin-top:10px;font-size:12px"></div>
-      <div class="dim" id="replay-note" style="font-size:12px;margin-top:8px"></div>
-    </div>
-  </section>
+    <div class="content">
 
-  <section id="page-compare" class="hidden">
-    <div class="card">
-      <h2>多场对比</h2>
-      <div class="row" id="cmp-summary"></div>
-    </div>
-    <div class="grid two">
-      <div class="card"><h2>比分与回合</h2><div id="chart-cmp-score" class="chart"></div></div>
-      <div class="card"><h2>经济曲线对比</h2><div id="chart-cmp-economy" class="chart"></div></div>
-    </div>
-    <div class="card">
-      <h2>玩家数据对比 <span class="dim" style="font-size:12px">同名玩家跨场对齐 · 点击表头排序</span></h2>
-      <div class="scroll"><table id="tbl-compare"></table></div>
-    </div>
-    <div class="card">
-      <h2>雷达图对比 <span class="dim" style="font-size:12px">每场 Rating 最高的玩家</span></h2>
-      <div id="chart-cmp-radar" class="chart tall"></div>
-    </div>
-  </section>
+      <!-- ---------------------------- 首页 ---------------------------- -->
+      <section id="page-home" class="page">
+        <div class="page-head">
+          <h1>工作台</h1>
+          <p class="dim">全部数据留在本机，不上传任何服务器。</p>
+        </div>
+        <div class="kpi-row" id="kpis"></div>
+        <div class="grid two" style="margin-top:16px">
+          <div class="card">
+            <h2>快速入口</h2>
+            <div class="quick">
+              <button class="quick-item" data-go="analysis" data-page="match">
+                <span class="qi">◧</span>
+                <span><span class="qt">分析当前比赛</span><br><span class="qd">经济曲线 · 回合明细</span></span>
+              </button>
+              <button class="quick-item" data-go="analysis" data-page="replay">
+                <span class="qi">▶</span>
+                <span><span class="qt">看回合回放</span><br><span class="qd">逐帧走位轨迹</span></span>
+              </button>
+              <button class="quick-item" data-go="import">
+                <span class="qi">⇪</span>
+                <span><span class="qt">导入新的 demo</span><br><span class="qd">拖拽文件或扫描本机录像</span></span>
+              </button>
+              <button class="quick-item" data-go="stats">
+                <span class="qi">▤</span>
+                <span><span class="qt">跨场统计</span><br><span class="qd">多场比赛并列对比</span></span>
+              </button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>最近的比赛</h2>
+            <div class="matches" id="home-matches"></div>
+            <div class="empty hidden" id="home-no-matches">还没有解析过比赛，去「导入」拖一个 .dem 进来。</div>
+          </div>
+        </div>
+      </section>
 
-</main>
+      <!-- ---------------------------- 导入 ---------------------------- -->
+      <section id="page-import" class="page hidden">
+        <div class="page-head">
+          <h1>导入</h1>
+          <p class="dim">拖入 .dem 文件，或扫描本机 Steam 录像目录。解析在后台进行，可同时排队多个。</p>
+        </div>
+        <div class="card">
+          <h2>拖拽文件</h2>
+          <div class="drop" id="drop">
+            <div class="big">把 .dem 文件拖到这里，或点击选择</div>
+            <div style="font-size:12px">支持 CS2（Source 2）demo；文件只写入本机 数据\demos\ 目录</div>
+          </div>
+          <input type="file" id="file" accept=".dem" class="hidden">
+          <div class="row" style="margin-top:14px">
+            <button class="btn ghost" id="btn-scan">扫描本机录像</button>
+            <span class="dim" id="scan-hint" style="font-size:12px"></span>
+          </div>
+          <div class="scan-list" id="scan-list"></div>
+        </div>
+        <div class="card">
+          <h2>解析队列 <span class="dim" id="task-count"></span></h2>
+          <div class="task-list" id="task-list"></div>
+          <div class="empty hidden" id="no-task">队列为空。解析中的任务会显示在这里。</div>
+        </div>
+      </section>
+
+      <!-- ------------------------- 分析 / 概览 ------------------------- -->
+      <section id="page-match" class="page hidden">
+        <div class="page-head">
+          <h1>比赛概览</h1>
+          <p class="dim" id="match-title">&nbsp;</p>
+        </div>
+        <div class="card"><div class="row" id="match-meta"></div></div>
+        <div class="grid two">
+          <div class="card"><h2>经济曲线</h2><div id="chart-economy" class="chart"></div></div>
+          <div class="card"><h2>回合结果</h2><div id="chart-rounds" class="chart"></div></div>
+        </div>
+        <div class="card">
+          <h2>回合明细</h2>
+          <div class="scroll"><table id="tbl-rounds"></table></div>
+        </div>
+      </section>
+
+      <!-- ------------------------- 分析 / 玩家 ------------------------- -->
+      <section id="page-players" class="page hidden">
+        <div class="page-head"><h1>玩家</h1><p class="dim">Rating≈ 是本项目的近似公式，不是 HLTV 官方值。</p></div>
+        <div class="card">
+          <h2>记分板 <span class="dim">点击表头排序 · 点击行看雷达图</span></h2>
+          <div class="scroll"><table id="tbl-players"></table></div>
+        </div>
+        <div class="grid two">
+          <div class="card"><h2 id="radar-title">雷达图</h2><div id="chart-radar" class="chart"></div></div>
+          <div class="card"><h2>ADR / KAST 对比</h2><div id="chart-adr" class="chart"></div></div>
+        </div>
+      </section>
+
+      <!-- ------------------------- 分析 / 地图 ------------------------- -->
+      <section id="page-map" class="page hidden">
+        <div class="page-head"><h1>地图分布</h1><p class="dim">高斯密度图，非 ECharts heatmap。</p></div>
+        <div class="card">
+          <h2 id="map-name">地图</h2>
+          <div class="row">
+            <button class="btn" data-heat="kills">击杀</button>
+            <button class="btn ghost" data-heat="deaths">死亡</button>
+            <button class="btn ghost" data-heat="shots">射击</button>
+            <span class="dim" id="heat-count" style="font-size:12px"></span>
+          </div>
+          <div class="row" id="heat-filter-row" style="margin-top:12px">
+            <label class="dim" style="font-size:12px">回合
+              <select id="f-round"><option value="">全部</option></select>
+            </label>
+            <label class="dim" style="font-size:12px">阵营
+              <select id="f-side"><option value="">全部</option><option value="ct">CT</option><option value="t">T</option></select>
+            </label>
+            <label class="dim" style="font-size:12px">武器
+              <select id="f-weapon"><option value="">全部</option></select>
+            </label>
+            <span class="dim" id="heat-filter-note" style="font-size:12px"></span>
+          </div>
+          <div class="row" id="heat-legend-row" style="margin-top:12px">
+            <span class="dim" style="font-size:12px">低</span>
+            <div id="heat-legend"></div>
+            <span class="dim" style="font-size:12px">高</span>
+          </div>
+          <div id="map-wrap" class="map-wrap">
+            <canvas id="map-canvas" width="1024" height="1024"></canvas>
+          </div>
+          <div class="dim" id="map-note" style="font-size:12px;margin-top:8px"></div>
+        </div>
+      </section>
+
+      <!-- ------------------------- 分析 / 回放 ------------------------- -->
+      <section id="page-replay" class="page hidden">
+        <div class="page-head"><h1>回合回放</h1><p class="dim">按 awpy snapshots 重建的走位轨迹。</p></div>
+        <div class="card">
+          <h2>播放控制</h2>
+          <div class="row">
+            <label class="dim" style="font-size:12px">回合
+              <select id="r-round"></select>
+            </label>
+            <button class="btn" id="btn-play">播放</button>
+            <button class="btn ghost" id="btn-replay-reset">回到开头</button>
+            <label class="dim" style="font-size:12px">速度
+              <select id="r-speed">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+                <option value="8">8×</option>
+              </select>
+            </label>
+            <label class="dim" style="font-size:12px">采样
+              <select id="r-every">
+                <option value="4">每 4 tick</option>
+                <option value="8" selected>每 8 tick</option>
+                <option value="16">每 16 tick</option>
+                <option value="32">每 32 tick</option>
+              </select>
+            </label>
+            <span class="dim" id="r-info" style="font-size:12px"></span>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <input type="range" id="r-seek" min="0" max="0" value="0" style="flex:1;min-width:240px">
+            <span class="dim" id="r-clock" style="font-size:12px;min-width:110px"></span>
+          </div>
+        </div>
+        <div class="card">
+          <h2>轨迹画布</h2>
+          <div id="replay-wrap" class="map-wrap">
+            <canvas id="replay-canvas" width="1024" height="1024"></canvas>
+          </div>
+          <div class="row" id="replay-legend" style="margin-top:10px;font-size:12px"></div>
+          <div class="dim" id="replay-note" style="font-size:12px;margin-top:8px"></div>
+        </div>
+      </section>
+
+      <!-- ---------------------------- 统计 ---------------------------- -->
+      <section id="page-compare" class="page hidden">
+        <div class="page-head">
+          <h1>跨场统计</h1>
+          <p class="dim">在下方勾选 2 场以上比赛；同名玩家跨场对齐。</p>
+        </div>
+        <div class="card">
+          <h2>选择比赛 <span class="dim" id="sel-hint">勾选 2 场以上可比对</span></h2>
+          <div class="row">
+            <button class="btn" id="btn-compare" disabled>开始对比</button>
+            <button class="btn ghost" id="btn-clear-sel">清空选择</button>
+            <span class="dim" id="sel-count" style="font-size:12px"></span>
+          </div>
+          <div class="matches" id="matches" style="margin-top:12px"></div>
+          <div class="empty hidden" id="no-matches">还没有解析过比赛。</div>
+        </div>
+        <div id="cmp-result" class="hidden">
+          <div class="card">
+            <h2>对比摘要</h2>
+            <div class="row" id="cmp-summary"></div>
+          </div>
+          <div class="grid two">
+            <div class="card"><h2>比分与回合</h2><div id="chart-cmp-score" class="chart"></div></div>
+            <div class="card"><h2>经济曲线对比</h2><div id="chart-cmp-economy" class="chart"></div></div>
+          </div>
+          <div class="card">
+            <h2>玩家数据对比 <span class="dim">同名玩家跨场对齐 · 点击表头排序</span></h2>
+            <div class="scroll"><table id="tbl-compare"></table></div>
+          </div>
+          <div class="card">
+            <h2>雷达图对比 <span class="dim">每场 Rating≈ 最高的玩家</span></h2>
+            <div id="chart-cmp-radar" class="chart tall"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------------------------- 设置 ---------------------------- -->
+      <section id="page-settings" class="page hidden">
+        <div class="page-head">
+          <h1>设置</h1>
+          <p class="dim">配置保存在浏览器本地，不写后端。</p>
+        </div>
+        <div class="grid two">
+          <div class="card">
+            <h2>外观</h2>
+            <div class="set-row">
+              <span class="lb"><span class="t">主题</span><span class="d">深色适合看图，浅色适合白天与投屏</span></span>
+              <select id="set-theme"><option value="dark">深色</option><option value="light">浅色</option></select>
+            </div>
+            <div class="set-row">
+              <span class="lb"><span class="t">紧凑表格</span><span class="d">缩小行高，一屏显示更多数据</span></span>
+              <select id="set-compact"><option value="0">标准</option><option value="1">紧凑</option></select>
+            </div>
+            <div class="set-row">
+              <span class="lb"><span class="t">等宽数字</span><span class="d">表格与比分数字对齐，便于纵向比对</span></span>
+              <select id="set-tabular"><option value="1">开启</option><option value="0">关闭</option></select>
+            </div>
+          </div>
+          <div class="card">
+            <h2>分析</h2>
+            <div class="set-row">
+              <span class="lb"><span class="t">回放默认采样</span><span class="d">每 N 个 tick 取一帧。数值越小越精细，回放越慢</span></span>
+              <select id="set-every">
+                <option value="4">4 tick</option><option value="8">8 tick</option>
+                <option value="16">16 tick</option><option value="32">32 tick</option>
+              </select>
+            </div>
+            <div class="set-row">
+              <span class="lb"><span class="t">雷达图归一方式</span><span class="d">按全场最大值：只看本场排名；按固定上限：跨场可比</span></span>
+              <select id="set-radar">
+                <option value="max">全场最大值</option><option value="fixed">固定上限</option>
+              </select>
+            </div>
+            <div class="set-row">
+              <span class="lb"><span class="t">图表主题跟随</span><span class="d">切换主题时重绘已打开的图表</span></span>
+              <select id="set-livecolor"><option value="1">跟随</option><option value="0">固定深色</option></select>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>数据</h2>
+          <div class="row">
+            <button class="btn ghost" id="btn-clear-cache">清空回放轨迹缓存</button>
+            <span class="dim" id="cache-note" style="font-size:12px">删除已生成的回放轨迹，下次查看会重新解析（约 1 秒）。</span>
+          </div>
+          <div class="sep"></div>
+          <div class="row">
+            <button class="btn ghost" id="btn-reload">重载全部数据</button>
+            <span class="dim" style="font-size:12px">重新拉取比赛列表与当前比赛的全部数据。</span>
+          </div>
+          <div class="sep"></div>
+          <div class="row">
+            <button class="btn danger" id="btn-delete-match">删除当前比赛</button>
+            <span class="dim" style="font-size:12px">不可撤销，同时会删除该场的原始数据集与轨迹缓存。</span>
+          </div>
+        </div>
+        <div class="card">
+          <h2>关于</h2>
+          <div class="set-row">
+            <span class="lb"><span class="t">CS2 数据面板</span><span class="d" id="about-ver">本机运行的 CS2 demo 分析工具</span></span>
+            <span class="pill" id="about-health">检查中…</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 <script src="/static/vendor/echarts.min.js"></script>
 <script src="/static/app.js"></script>
