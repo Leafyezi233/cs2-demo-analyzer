@@ -490,9 +490,31 @@ input[type=text]:focus, input:not([type]):focus { border-color: var(--accent); o
   .card { padding: 15px; }
   .topbar { padding: 0 14px; }
   .picker-label { display: none; }
-  #match-select { max-width: 220px; }
+  #who-select { max-width: 200px; }
   .scroll { max-height: 400px; }
 }
+
+/* ---------- Demo 库 ---------- */
+.sw-star {
+  width: 20px; height: 20px; flex: 0 0 20px; padding: 0;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: transparent; color: var(--dim); font-size: 11px; line-height: 1;
+  cursor: pointer; transition: color var(--fast), border-color var(--fast), background var(--fast);
+}
+.sw-star:hover { color: var(--accent); border-color: var(--accent); }
+table.pick-cell input.pick,
+#tbl-lib .pick { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; vertical-align: -2px; }
+#tbl-lib td { vertical-align: middle; }
+#lib-bar {
+  position: sticky; bottom: 0;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r); padding: 10px 14px; box-shadow: var(--shadow-md);
+}
+#lib-bar .btn { height: 32px; }
+#lib-q { flex: 1 1 240px; min-width: 160px; }
+
+/* ---------- 设置页「我的账号」星标 ---------- */
+#id-chips .sw-star + .cn { margin-left: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: .01ms !important; transition-duration: .01ms !important; }

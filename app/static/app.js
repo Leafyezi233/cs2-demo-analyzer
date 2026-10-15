@@ -135,6 +135,7 @@ const state = {
   sec: 'home', page: 'home',
   tasks: new Map(),
   agSelected: new Set(), agRange: '0', agMetric: 'rating',
+  primaryId: '', libQ: '', libMap: '', libSort: 'time',
 };
 const charts = {};
 
@@ -207,9 +208,9 @@ function rebuildCharts() {
 window.addEventListener('resize', () => Object.values(charts).forEach((c) => c.resize()));
 
 /* =============================================================== 两级导航 */
-const SECTIONS = ['home', 'import', 'analysis', 'stats', 'settings'];
+const SECTIONS = ['home', 'library', 'import', 'analysis', 'stats', 'settings'];
 const SUBPAGES = { analysis: ['match', 'players', 'map', 'replay'], stats: ['compare'] };
-const PAGE_OF_SEC = { home: 'home', import: 'import', analysis: 'match', stats: 'compare', settings: 'settings' };
+const PAGE_OF_SEC = { home: 'home', library: 'library', import: 'import', analysis: 'match', stats: 'compare', settings: 'settings' };
 
 function syncNav() {
   const { sec, page } = state;
@@ -232,7 +233,7 @@ function show(sec, page) {
   state.page = page;
   // analysis 是唯一的二级区：它本身没有 section 元素，只显示当前子页。
   // stats 的 section 元素 id 是 page-compare（SECTIONS 里用的是语义名 stats）。
-  const SEC_EL = { home: 'home', import: 'import', stats: 'compare', settings: 'settings' };
+  const SEC_EL = { home: 'home', library: 'library', import: 'import', stats: 'compare', settings: 'settings' };
   Object.keys(SEC_EL).forEach((s) => {
     const el = document.getElementById('page-' + SEC_EL[s]);
     if (el) el.classList.toggle('hidden', s !== sec);
@@ -281,6 +282,7 @@ $('.content').addEventListener('click', (e) => {
   if (sec === 'analysis' && b.dataset.page === 'map' && state.matchId) loadHeat(state.heatType);
   if (sec === 'analysis' && b.dataset.page === 'replay') enterReplayPage();
   if (sec === 'home') renderHome();
+  if (sec === 'library') renderLibrary();
 });
 
 /* 移动端抽屉 */
@@ -299,7 +301,8 @@ async function loadMatches() {
   const ids = new Set(list.map((m) => m.id));
   [...playerCache.keys()].forEach((id) => { if (!ids.has(id)) playerCache.delete(id); });
   $('#sf-matches').textContent = list.length;
-  renderMatchSelect();
+  renderWhoSelect();
+  renderLibrary();
   await ensureRoster();          // 名册与聚合都靠 playerCache，这里一次性补齐
   renderHome();
   renderIdentityPanel();
@@ -307,18 +310,36 @@ async function loadMatches() {
   syncCompareBar();
 }
 
-function renderMatchSelect() {
-  const sel = $('#match-select');
-  const cur = state.matchId || '';
-  sel.innerHTML = '<option value="">未选择比赛</option>' + state.matches.map((m) =>
-    '<option value="' + escapeAttr(m.id) + '">' + escapeHtml((m.map_name || '?') + ' · ' + m.ct_score + ':' + m.t_score + ' · ' + m.file_name) + '</option>'
-  ).join('');
-  sel.value = cur && state.matches.some((m) => m.id === cur) ? cur : '';
+/* 顶栏只管「我是谁」：选定后首页统计收敛到该账号；选回空值＝恢复全部账号。
+ * 具体看哪场比赛交给 Demo 库与分析区，不再占用顶栏。 */
+function renderWhoSelect() {
+  const sel = $('#who-select');
+  if (!sel) return;
+  const ids = getIdentities();
+  if (state.primaryId && !ids.some((x) => x.steamid === state.primaryId)) state.primaryId = '';
+  sel.innerHTML = '<option value="">' + (ids.length ? '全部账号（' + ids.length + '）' : '未设置账号') + '</option>' +
+    ids.map((x) => '<option value="' + escapeAttr(x.steamid) + '">' +
+      escapeHtml(identityName(x.steamid)) + '</option>').join('');
+  sel.value = state.primaryId || '';
 }
-$('#match-select').addEventListener('change', (e) => {
+$('#who-select').addEventListener('change', (e) => {
   const id = e.target.value;
-  if (id) openMatch(id);
+  state.primaryId = id;
+  state.agSelected = new Set(id ? [id] : getIdentities().map((x) => x.steamid));
+  state.agDirty = true;
+  renderHome();
 });
+/* 设置页里把某个账号设为默认视角 */
+function setPrimary(steamid) {
+  /* 深链里的 who 可能已不在清单里，此时退回全部账号而不是保持旧视角 */
+  const id = getIdentities().some((x) => x.steamid === steamid) ? steamid : '';
+  state.primaryId = id;
+  /* 空值 = 全部账号；单选 = 只统计这一个 */
+  state.agSelected = new Set(id ? [id] : getIdentities().map((x) => x.steamid));
+  renderWhoSelect();
+  renderHome();
+  renderIdentityPanel();
+}
 
 function matchCardHtml(m, withPick) {
   return (withPick ? '<input type="checkbox" class="pick" title="加入对比"' + (state.selected.has(m.id) ? ' checked' : '') + '>' : '') +
@@ -355,6 +376,122 @@ function syncCompareBar() {
   btn.disabled = n < 2;
   $('#sel-hint').textContent = n < 2 ? '勾选 2 场以上可比对' : '已选 ' + n + ' 场';
   $('#sel-count').textContent = n ? '已选 ' + n + ' 场' : '';
+}
+
+
+/* ================================================================ Demo 库 */
+/* 全局「我有什么」：库里全部 demo 的检索、筛选与批量对比入口。
+ * 顶栏只管「我是谁」，具体看哪一场由这里决定。 */
+function libFiltered() {
+  const q = state.libQ.trim().toLowerCase();
+  let list = state.matches.filter((m) => {
+    if (state.libMap && m.map_name !== state.libMap) return false;
+    if (!q) return true;
+    return [m.file_name, m.server_name, m.map_name].some((x) => String(x || '').toLowerCase().includes(q));
+  });
+  const by = {
+    time: (a, b) => (b.created_at || 0) - (a.created_at || 0),
+    long: (a, b) => (b.playback_time || 0) - (a.playback_time || 0),
+    rounds: (a, b) => (b.round_count || 0) - (a.round_count || 0),
+    score: (a, b) => ((b.ct_score || 0) + (b.t_score || 0)) - ((a.ct_score || 0) + (a.t_score || 0)),
+    name: (a, b) => String(a.file_name).localeCompare(String(b.file_name)),
+  };
+  return list.sort(by[state.libSort] || by.time);
+}
+function renderLibraryMaps() {
+  const sel = $('#lib-map');
+  if (!sel) return;
+  const maps = [...new Set(state.matches.map((m) => m.map_name).filter(Boolean))].sort();
+  const keep = state.libMap;
+  sel.innerHTML = '<option value="">全部地图</option>' +
+    maps.map((x) => '<option value="' + escapeAttr(x) + '">' + escapeHtml(x) + '</option>').join('');
+  sel.value = maps.includes(keep) ? keep : (state.libMap = '');
+}
+function renderLibrary() {
+  const tbl = $('#tbl-lib');
+  if (!tbl) return;
+  renderLibraryMaps();
+  const list = libFiltered();
+  const shown = list.length;
+  const total = state.matches.length;
+  $('#lib-count').textContent = shown === total
+    ? total + ' 场' : shown + ' / ' + total + ' 场';
+  /* 空态看的是「筛完剩几条」而不是库里总共几条，否则搜不到时会是一片空白表格 */
+  $('#lib-empty').classList.toggle('hidden', shown > 0);
+  $('#lib-empty-text').textContent = total
+    ? '没有匹配「' + (state.libQ || state.libMap) + '」的比赛。' : '库里还没有比赛。';
+  const cur = $('#lib-cur');
+  if (cur) cur.textContent = state.matchId
+    ? '当前分析：' + ((state.match && state.match.map_name || '?') + ' · ' + (state.match && state.match.ct_score) + ':' + (state.match && state.match.t_score))
+    : '';
+  $('#lib-bar').classList.toggle('hidden', !state.selected.size);
+  $('#lib-selhint').textContent = '已选 ' + state.selected.size + ' 场' +
+    (state.selected.size >= 2 ? '，可直接对比' : '，再选至少 1 场即可对比');
+  $('#lib-compare').disabled = state.selected.size < 2;
+  if (!total) { tbl.innerHTML = ''; return; }
+
+  let html = '<thead><tr><th class="l">文件名</th><th class="l">地图</th><th>比分</th>' +
+    '<th>回合</th><th>时长</th><th>大小</th><th>解析</th><th>导入时间</th><th class="l">操作</th></tr></thead><tbody>';
+  list.forEach((m) => {
+    const curRow = m.id === state.matchId;
+    html += '<tr' + (curRow ? ' style="background:var(--panel2)"' : '') + '>' +
+      '<td class="l"><input type="checkbox" class="pick" data-libpick="' + escapeAttr(m.id) + '"' +
+        (state.selected.has(m.id) ? ' checked' : '') + '> ' +
+        '<span' + (curRow ? ' style="color:var(--accent);font-weight:600"' : '') + '>' +
+        escapeHtml(m.file_name) + '</span>' +
+        (curRow ? ' <span class="pill">分析中</span>' : '') + '</td>' +
+      '<td class="l">' + escapeHtml(m.map_name || '?') + '</td>' +
+      '<td><span class="ct">' + m.ct_score + '</span> : <span class="t">' + m.t_score + '</span></td>' +
+      '<td>' + (m.round_count || 0) + '</td>' +
+      '<td>' + (m.playback_time ? Math.round(m.playback_time / 60) + ' 分' : '-') + '</td>' +
+      '<td>' + (m.file_size ? (m.file_size / 1048576).toFixed(1) + ' MB' : '-') + '</td>' +
+      '<td>' + (m.parse_seconds ? Number(m.parse_seconds).toFixed(1) + 's' : '-') + '</td>' +
+      '<td>' + escapeHtml(m.created_at ? new Date(m.created_at * 1000).toLocaleString('zh-CN', { hour12: false }) : '-') + '</td>' +
+      '<td class="l"><button class="btn ghost sm" data-libopen="' + escapeAttr(m.id) + '">分析</button> ' +
+      '<button class="btn ghost sm" data-libdel="' + escapeAttr(m.id) + '">删除</button></td></tr>';
+  });
+  tbl.innerHTML = html + '</tbody>';
+}
+$('#tbl-lib').addEventListener('change', (e) => {
+  const id = e.target.dataset.libpick;
+  if (!id) return;
+  if (e.target.checked) state.selected.add(id); else state.selected.delete(id);
+  renderLibrary();
+  renderStatsPicker();
+  syncCompareBar();
+});
+$('#tbl-lib').addEventListener('click', (e) => {
+  const open = e.target.closest('[data-libopen]');
+  if (open) { openMatch(open.dataset.libopen).then(() => show('analysis', 'match')).catch((er) => toast('打开失败：' + er.message, true)); return; }
+  const del = e.target.closest('[data-libdel]');
+  if (del) deleteMatchById(del.dataset.libdel);
+});
+$('#lib-q').addEventListener('input', (e) => { state.libQ = e.target.value; renderLibrary(); });
+$('#lib-map').addEventListener('change', (e) => { state.libMap = e.target.value; renderLibrary(); });
+$('#lib-sort').addEventListener('change', (e) => { state.libSort = e.target.value; renderLibrary(); });
+$('#lib-clear').addEventListener('click', () => {
+  state.selected.clear();
+  renderLibrary();
+  renderStatsPicker();
+  syncCompareBar();
+});
+$('#lib-compare').addEventListener('click', async () => {
+  const ids = [...state.selected];
+  if (ids.length < 2) { toast('至少需要 2 场比赛', true); return; }
+  show('stats');
+  syncCompareBar();
+  await runCompare(ids);
+});
+function deleteMatchById(id) {
+  const m = state.matches.find((x) => x.id === id);
+  if (!confirm('确定删除比赛「' + (m ? m.file_name : id) + '」？\n该操作不可撤销，同时删除其数据集与轨迹缓存。')) return;
+  api('/api/matches/' + id, { method: 'DELETE' }).then(async () => {
+    invalidateMatchCache(id);
+    state.selected.delete(id);
+    if (state.matchId === id) { state.matchId = null; state.match = null; state.replay = null; }
+    toast('已删除');
+    await loadMatches();
+  }).catch((e) => toast('删除失败：' + e.message, true));
 }
 
 /* ==================================================== 我的账号（身份层） */
@@ -527,6 +664,8 @@ function renderHomeLibrary() {
     box.appendChild(div);
   });
   $('#home-no-matches').classList.toggle('hidden', state.matches.length > 0);
+  const lc = $('#home-lib-count');
+  if (lc) lc.textContent = state.matches.length;
   const last = state.matches[0];
   const meta = $('#home-meta');
   if (meta) {
@@ -537,6 +676,7 @@ function renderHomeLibrary() {
     ].map(([k, v]) => '<span class="pill">' + k + ' ' + v + '</span>').join('') +
       ([...state.tasks.values()].filter((t) => t.status === 'pending' || t.status === 'running').length
         ? '<span class="pill">解析中 ' + [...state.tasks.values()].filter((t) => t.status === 'pending' || t.status === 'running').length + '</span>' : '') +
+      (state.primaryId ? '<span class="pill">视角 ' + escapeHtml(identityName(state.primaryId)) + '</span>' : '') +
       (last ? '<span class="pill">最近 ' + escapeHtml(last.map_name || '?') + ' ' + last.ct_score + ':' + last.t_score + '</span>' : '');
   }
 }
@@ -752,6 +892,9 @@ function renderIdentityPanel() {
   box.innerHTML = ids.map((x) => {
     const e = r.get(x.steamid);
     return '<span class="chip on" title="' + escapeAttr(x.steamid) + '">' +
+      '<button class="sw-star" title="' + (state.primaryId === x.steamid ? '当前视角账号' : '设为顶栏默认视角') + '" data-idstar="' +
+      escapeAttr(x.steamid) + '" style="background:' + (state.primaryId === x.steamid ? 'var(--accent)' : 'transparent') +
+      ';border-color:' + (state.primaryId === x.steamid ? 'var(--accent)' : 'var(--line)') + '">★</button>' +
       '<span class="cn">' + escapeHtml(x.alias || identityName(x.steamid, r)) + '</span>' +
       '<span class="cs">' + (e ? e.count + ' 场' : '库中无记录') + (e && e.team ? ' · ' + escapeHtml(e.team) : '') + '</span>' +
       '<button class="x" title="移除" data-idrm="' + escapeAttr(x.steamid) + '">×</button></span>';
@@ -767,8 +910,11 @@ function renderIdentityPanel() {
         '</option>').join('')
     : '<option value="">名册为空，先导入比赛</option>';
   if (cand.some((e) => e.steamid === keep)) sel.value = keep;
+  renderWhoSelect();
 }
 $('#id-chips').addEventListener('click', (e) => {
+  const star = e.target.closest('[data-idstar]');
+  if (star) { setPrimary(state.primaryId === star.dataset.idstar ? '' : star.dataset.idstar); return; }
   const rm = e.target.closest('[data-idrm]');
   if (!rm) return;
   saveIdentities(getIdentities().filter((x) => x.steamid !== rm.dataset.idrm));
@@ -920,7 +1066,10 @@ async function openMatch(id) {
   state.match = m;
   /* 名册缓存同步这一场的玩家行（刚解析完的比赛要能立即进统计） */
   loadPlayerRows(id).then(() => { if (state.sec === 'home') renderHome(); }).catch(() => {});
-  renderMatchSelect();
+  /* 当前比赛变了：库表格要标出正在分析的那一行 */
+  renderLibrary();
+  const cur = $('#lib-cur');
+  if (cur) cur.textContent = m.map_name + ' · ' + m.ct_score + ':' + m.t_score + ' · ' + m.file_name;
   $('#match-title').textContent = (m.map_name || '?') + '  ·  ' + m.ct_score + ' : ' + m.t_score + ' · ' + m.file_name;
   $('#match-meta').innerHTML =
     '<span class="pill ct">CT ' + m.ct_score + '</span><span class="pill t">T ' + m.t_score + '</span>' +
@@ -1715,11 +1864,11 @@ async function refreshHealth() {
 /* ================================================================ 深链 */
 /* 新格式：#s=<section>&p=<page>&m=<match>&heat=&round=&side=&weapon=&frame=&sel=
  * 旧格式：#match=<id>&page=<page>&...  —— 仍可解析，旧书签不失效。 */
-const SEC_OF_PAGE = { home: 'home', import: 'import', match: 'analysis', players: 'analysis', map: 'analysis', replay: 'analysis', compare: 'stats', settings: 'settings' };
+const SEC_OF_PAGE = { home: 'home', library: 'library', import: 'import', match: 'analysis', players: 'analysis', map: 'analysis', replay: 'analysis', compare: 'stats', settings: 'settings' };
 
 function writeHash() {
   const { sec, page } = state;
-  if (sec === 'home' && !state.matchId) { history.replaceState(null, '', location.pathname); return; }
+  if (sec === 'home' && !state.matchId && !state.primaryId) { history.replaceState(null, '', location.pathname); return; }
   const q = new URLSearchParams();
   q.set('s', sec);
   if (SUBPAGES[sec] && page !== PAGE_OF_SEC[sec]) q.set('p', page);
@@ -1732,6 +1881,7 @@ function writeHash() {
     if (f.weapon) q.set('weapon', f.weapon);
   }
   if (sec === 'analysis' && page === 'replay' && state.replayFrame) q.set('frame', state.replayFrame);
+  if (state.primaryId && (sec === 'home' || sec === 'library')) q.set('who', state.primaryId);
   if (sec === 'stats' && state.selected.size) q.set('sel', [...state.selected].join(','));
   history.replaceState(null, '', '#' + q.toString());
 }
@@ -1754,6 +1904,10 @@ async function applyHash() {
   if (!SECTIONS.includes(sec)) sec = 'home';
   if (page && SUBPAGES[sec] && !SUBPAGES[sec].includes(page)) page = PAGE_OF_SEC[sec];
   if (!id) id = state.matchId;
+
+  /* 视角账号要在 show() 之前定下来：show() 内部会调 writeHash()，
+   * 那时 state.primaryId 必须已是最终值，否则深链的 who= 会被自己抹掉。 */
+  setPrimary(q.get('who') || '');
 
   hashLock = true;
   try {

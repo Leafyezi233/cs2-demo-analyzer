@@ -33,6 +33,10 @@
       <button class="nav-item active" data-sec="home" data-page="home">
         <span class="ni-ico">◈</span><span>首页</span>
       </button>
+      <button class="nav-item" data-sec="library" data-page="library">
+        <span class="ni-ico">▦</span><span>Demo 库</span>
+      </button>
+
       <button class="nav-item" data-sec="import" data-page="import">
         <span class="ni-ico">⇪</span><span>导入</span>
       </button>
@@ -71,8 +75,8 @@
     <header class="topbar">
       <button class="icon-btn" id="btn-menu" aria-label="菜单">☰</button>
       <div class="picker">
-        <span class="picker-label">当前比赛</span>
-        <select id="match-select"><option value="">未选择比赛</option></select>
+        <span class="picker-label">视角账号</span>
+        <select id="who-select" title="切换首页统计的账号"><option value="">未设置账号</option></select>
       </div>
       <span class="grow"></span>
       <button class="btn ghost sm" id="btn-theme" title="切换主题">深色</button>
@@ -149,7 +153,43 @@
             <h2>最近的比赛</h2>
             <div class="matches" id="home-matches"></div>
             <div class="empty hidden" id="home-no-matches">还没有解析过比赛，去「导入」拖一个 .dem 进来。</div>
+            <button class="btn ghost sm" data-go="library" style="margin-top:12px;width:100%">查看全部 Demo（<span id="home-lib-count">0</span> 场）</button>
           </div>
+        </div>
+      </section>
+
+      <!-- --------------------------- Demo 库 ---------------------------- -->
+      <section id="page-library" class="page hidden">
+        <div class="page-head">
+          <h1>Demo 库</h1>
+          <p class="dim">已解析的全部比赛。可按文件名 / 服务器搜索、按地图筛选，勾选多场直接进入跨场对比。</p>
+          <div class="dim" id="lib-cur" style="font-size:12.5px;margin-top:6px"></div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <input id="lib-q" placeholder="搜索文件名 / 服务器 / 地图" style="flex:1 1 240px">
+            <select id="lib-map" style="min-width:150px"><option value="">全部地图</option></select>
+            <select id="lib-sort" style="min-width:150px">
+              <option value="time">最近导入</option>
+              <option value="long">时长最长</option>
+              <option value="rounds">回合最多</option>
+              <option value="score">总回合最高</option>
+              <option value="name">文件名 A→Z</option>
+            </select>
+            <span class="grow"></span>
+            <span class="dim" id="lib-count" style="font-size:12px"></span>
+          </div>
+          <div class="scroll" style="margin-top:12px"><table id="tbl-lib"></table></div>
+          <div class="empty hidden" id="lib-empty">
+            <div id="lib-empty-text">库里还没有比赛。</div>
+            <button class="btn primary" data-go="import" style="margin-top:14px">去导入</button>
+          </div>
+        </div>
+        <div class="row hidden" id="lib-bar" style="margin-top:12px">
+          <span class="dim" id="lib-selhint" style="font-size:12.5px"></span>
+          <span class="grow"></span>
+          <button class="btn ghost" id="lib-clear">清空选择</button>
+          <button class="btn primary" id="lib-compare">开始对比</button>
         </div>
       </section>
 
