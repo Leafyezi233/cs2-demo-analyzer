@@ -1,0 +1,10 @@
+[project]
+name = "cs2-demo-analyzer"
+version = "0.2.0"
+description = "本机运行的 CS2 demo 个人数据分析工具"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]

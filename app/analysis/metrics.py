@@ -1,12 +1,16 @@
-"""自算指标：HLTV Rating 近似 与 多杀计数。
+"""自算指标：HLTV Rating 近似、多杀计数、热力图点集。
 
 awpy 3.0.0 已经提供 multikill_2k..5k 与 clutches，这里**独立重算多杀**用于交叉校验，
 并补上 awpy 没有的 Rating 近似值（HLTV Rating 无官方公开定义，界面上必须标注"近似"）。
 """
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from typing import Any, Iterable
+from collections import defaultdict
+from typing import Iterable
+
+from .common import RoundIndex, clean_sid, norm_side
+
+MULTIKILL_EMPTY = {"2k": 0, "3k": 0, "4k": 0, "5k": 0, "ace": 0}
 
 
 def approximate_rating(stat: dict) -> float | None:
@@ -35,45 +39,26 @@ def multikills(kills: Iterable[dict], rounds: Iterable[dict]) -> dict[str, dict[
     """按 (回合, 击杀者) 统计单回合击杀数，得到 2K/3K/4K/5K。
 
     返回 {steamid: {"2k": n, "3k": n, "4k": n, "5k": n, "ace": n}}。
-    以 rounds 的 start_tick/end_tick 把击杀归属到回合（比依赖事件更稳）。
     """
-    # 用 official_end_tick 而不是 end_tick：end_tick 是最后一击的时刻，
-    # 其后到 official_end_tick 之间仍可能发生击杀（M0 实测：end_tick 会漏掉 4 个击杀，
-    # official_end_tick 只漏 3 个）。
-    spans = sorted(
-        ((r["start_tick"], r.get("official_end_tick") or r["end_tick"], r["round_num"])
-         for r in rounds if r.get("official_end_tick") or r.get("end_tick")),
-        key=lambda x: x[0],
-    )
-
-    def round_of(tick: int) -> int | None:
-        lo, hi = 0, len(spans) - 1
-        while lo <= hi:
-            mid = (lo + hi) // 2
-            start, end, num = spans[mid]
-            if tick < start:
-                hi = mid - 1
-            elif tick > end:
-                lo = mid + 1
-            else:
-                return num
-        return None
-
+    index = RoundIndex(rounds)
     per_round: dict[tuple[int, str], int] = defaultdict(int)
     for kill in kills:
-        attacker = kill.get("attacker_steamid")
+        attacker = clean_sid(kill.get("attacker_steamid"))
         if not attacker:
             continue
         # 排除友军击杀：awpy 的 stats 也不计，否则多杀数会偏大
         # （M0 实测：Triangulation 因一个 teamkill 从 3 个 2K 被算成 4 个）。
-        if kill.get("attacker_side") and kill.get("attacker_side") == kill.get("victim_side"):
+        a_side, v_side = norm_side(kill.get("attacker_side")), norm_side(kill.get("victim_side"))
+        if a_side and a_side == v_side:
             continue
-        rnd = round_of(kill["tick"])
+        if attacker == clean_sid(kill.get("victim_steamid")):
+            continue
+        rnd = index.round_of(kill.get("tick"))
         if rnd is None:
             continue
         per_round[(rnd, attacker)] += 1
 
-    result: dict[str, dict[str, int]] = defaultdict(lambda: {"2k": 0, "3k": 0, "4k": 0, "5k": 0, "ace": 0})
+    result: dict[str, dict[str, int]] = defaultdict(lambda: dict(MULTIKILL_EMPTY))
     for (_rnd, steamid), count in per_round.items():
         bucket = result[steamid]
         if count == 2:
@@ -88,34 +73,14 @@ def multikills(kills: Iterable[dict], rounds: Iterable[dict]) -> dict[str, dict[
     return dict(result)
 
 
-def opening_duels(kills: Iterable[dict], rounds: Iterable[dict]) -> dict[str, dict[str, int]]:
-    """每回合第一个击杀 = 首杀/首死（awpy 的 stats 里也有，这里独立重算）。"""
-    first: dict[int, dict] = {}
-    for kill in sorted(kills, key=lambda k: k["tick"]):
-        rnd = None
-        for r in rounds:
-            if r.get("start_tick") is not None and r["start_tick"] <= kill["tick"] <= (r.get("end_tick") or 0):
-                rnd = r["round_num"]
-                break
-        if rnd is None:
-            continue
-        first.setdefault(rnd, kill)
-
-    out: dict[str, dict[str, int]] = defaultdict(lambda: {"opening_kills": 0, "opening_deaths": 0})
-    for kill in first.values():
-        atk, vic = kill.get("attacker_steamid"), kill.get("victim_steamid")
-        if atk:
-            out[atk]["opening_kills"] += 1
-        if vic:
-            out[vic]["opening_deaths"] += 1
-    return dict(out)
-
-
 def match_score(rounds: Iterable[dict]) -> dict[str, int]:
-    """按回合胜者累计比分（winner_side 为 'terrorist' / 'counter-terrorist'）。"""
+    """按回合胜者累计**阵营**比分（winner_side 为 'terrorist' / 'counter-terrorist'）。
+
+    注意这不是队伍比分：半场换边后同一支队伍会在两个阵营下得分。队伍比分见 derive.py。
+    """
     score = {"terrorist": 0, "counter-terrorist": 0}
     for r in rounds:
-        side = r.get("winner_side")
+        side = norm_side(r.get("winner_side"))
         if side in score:
             score[side] += 1
     return score

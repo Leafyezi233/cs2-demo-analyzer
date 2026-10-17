@@ -3,7 +3,7 @@
 import json, os, re, subprocess, sys, time, urllib.parse, urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 DIST = ROOT / "dist" / "CS2数据面板"
 EXE = DIST / "CS2数据面板.exe"
 LOG = DIST / "日志.txt"
@@ -55,7 +55,7 @@ def main():
         while True:
             time.sleep(1.0)
             st = req(base, "api/tasks/" + tid)
-            if st["status"] in ("done", "error"):
+            if st["status"] in ("done", "failed"):
                 break
         print("task", st["status"], st.get("seconds"), "match", st.get("match_id"))
         if st["status"] != "done":

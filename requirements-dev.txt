@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest>=8
+httpx>=0.27
+# 可选：浏览器冒烟测试（tests/test_ui_smoke.py），未安装时自动跳过
+playwright>=1.45

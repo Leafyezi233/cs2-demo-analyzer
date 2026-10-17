@@ -1,0 +1,21 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: 安装依赖
+        run: pip install -r requirements-dev.txt
+      - name: 安装 Chromium（浏览器冒烟测试用）
+        run: python -m playwright install --with-deps chromium
+      - name: 运行测试
+        run: python -m pytest
