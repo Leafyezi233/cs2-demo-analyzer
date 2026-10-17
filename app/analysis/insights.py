@@ -38,12 +38,12 @@ def _finding(kind: str, severity: str, title: str, detail: str, **numbers: Any) 
     return {"kind": kind, "severity": severity, "title": title, "detail": detail, **numbers}
 
 
-def build(store: Store, steamid: str, last: int = 0) -> dict:
-    summ = stats.summary(store, steamid, last)
-    tl = stats.timeline(store, steamid, last)
-    maps = stats.breakdown(store, steamid, "map", last)
-    weapons = stats.breakdown(store, steamid, "weapon", last)
-    economy = stats.breakdown(store, steamid, "economy", last)
+def build(store: Store, steamid: str, last: int = 0, map_name: str | None = None) -> dict:
+    summ = stats.summary(store, steamid, last, map_name)
+    tl = stats.timeline(store, steamid, last, map_name)
+    maps = stats.breakdown(store, steamid, "map", last, map_name)
+    weapons = stats.breakdown(store, steamid, "weapon", last, map_name)
+    economy = stats.breakdown(store, steamid, "economy", last, map_name)
     found: list[dict] = []
 
     found += _data_quality(store, tl)
@@ -51,7 +51,7 @@ def build(store: Store, steamid: str, last: int = 0) -> dict:
         found.append(_finding("sample", "info", "样本不足",
                               f"统计范围内只有 {summ['games']} 场（至少 {stats.MIN_GAMES} 场才做分析），先多导入几场。",
                               value=summ["games"], threshold=stats.MIN_GAMES))
-        return _report(steamid, last, summ, found, maps, weapons, economy, tl)
+        return _report(steamid, last, map_name, summ, found, maps, weapons, economy, tl)
 
     found += _latest_vs_baseline(tl)
     found += _trends(tl)
@@ -61,10 +61,10 @@ def build(store: Store, steamid: str, last: int = 0) -> dict:
     found += _clutches(summ)
     found += _economy(economy)
     found += _weapons(weapons)
-    return _report(steamid, last, summ, found, maps, weapons, economy, tl)
+    return _report(steamid, last, map_name, summ, found, maps, weapons, economy, tl)
 
 
-def _report(steamid, last, summ, found, maps, weapons, economy, tl) -> dict:
+def _report(steamid, last, map_name, summ, found, maps, weapons, economy, tl) -> dict:
     order = {"bad": 0, "warn": 1, "good": 2, "info": 3}
     found.sort(key=lambda f: order.get(f["severity"], 9))
     for i, f in enumerate(found):
@@ -74,7 +74,7 @@ def _report(steamid, last, summ, found, maps, weapons, economy, tl) -> dict:
     return {
         "engine_version": ENGINE_VERSION,
         "steamid": steamid,
-        "scope": {"last": last or None, "games": summ["games"]},
+        "scope": {"last": last or None, "map": map_name, "games": summ["games"]},
         "summary": {k: summ.get(k) for k in keys},
         "sides": summ.get("sides"),
         "maps": [{k: m[k] for k in ("map_name", "games", "rounds", "w", "l", "rating", "adr", "kast", "sample")}

@@ -269,7 +269,8 @@ function renderAgEcon() {
 const SEV_LABEL = { bad: '问题', warn: '注意', good: '亮点', info: '信息' };
 function renderFindings() {
   const ins = home.data.insights;
-  $('#ag-insight-note').textContent = identityName(home.data.focus.steamid) + ' · ' + ins.scope.games + ' 场 · 规则引擎 v' + ins.engine_version;
+  $('#ag-insight-note').textContent = identityName(home.data.focus.steamid) + ' · ' + ins.scope.games + ' 场' +
+    (ins.scope.map ? ' · 仅 ' + ins.scope.map : '') + ' · 规则引擎 v' + ins.engine_version;
   $('#ag-findings').innerHTML = ins.findings.length
     ? ins.findings.map((f) => '<div class="finding ' + f.severity + '"><span class="sev">' + SEV_LABEL[f.severity] + '</span>' +
         '<div><div class="ft">' + escapeHtml(f.title) + '</div><div class="fd">' + escapeHtml(f.detail) + '</div></div></div>').join('')
@@ -343,7 +344,7 @@ async function generateReport(providerOverride) {
   $('#btn-report').disabled = true;
   $('#report-status').textContent = '生成中…（调用模型可能需要几十秒）';
   try {
-    const body = { last: Number(state.agRange) || 0 };
+    const body = { last: Number(state.agRange) || 0, map: state.agMap || null };
     if (providerOverride) body.provider = providerOverride;
     const r = await api('/api/players/' + steamid + '/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     home.report = { ...r, steamid };

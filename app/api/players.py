@@ -46,8 +46,8 @@ def player_breakdown(steamid: str, dim: str = Query("side", pattern=DIMS), last:
 
 @router.get("/players/{steamid}/highlights")
 def player_highlights(steamid: str, limit: int = Query(20, ge=1, le=200), last: int = Query(0, ge=0),
-                      c: Context = Depends(ctx)) -> list[dict]:
-    cte, params = stats._scope(steamid, last)
+                      map_name: str | None = Query(None, alias="map"), c: Context = Depends(ctx)) -> list[dict]:
+    cte, params = stats._scope(steamid, last, map_name)
     rows = c.store.query(
         cte + "SELECT h.*, m.map_name, m.file_name, COALESCE(m.played_at, m.created_at) AS played_at,"
         " m.tick_rate FROM highlights h JOIN matches m ON m.id = h.match_id"
@@ -60,15 +60,16 @@ def player_highlights(steamid: str, limit: int = Query(20, ge=1, le=200), last: 
 
 
 @router.get("/players/{steamid}/insights")
-def player_insights(steamid: str, last: int = Query(0, ge=0), c: Context = Depends(ctx)) -> dict:
-    return insights.build(c.store, steamid, last)
+def player_insights(steamid: str, last: int = Query(0, ge=0), map_name: str | None = Query(None, alias="map"),
+                    c: Context = Depends(ctx)) -> dict:
+    return insights.build(c.store, steamid, last, map_name)
 
 
 @router.post("/players/{steamid}/report")
 def player_report(steamid: str, body: dict = Body(default={}), c: Context = Depends(ctx)) -> dict:
     """生成一份复盘：规则发现（数字）+ AI 叙述（文字）。结果落库，带引擎/提示词版本与模型名。"""
     last = int(body.get("last") or 0)
-    report = insights.build(c.store, steamid, last)
+    report = insights.build(c.store, steamid, last, body.get("map") or None)
     name = next((r["name"] for r in stats.roster(c.store) if r["steamid"] == steamid), None)
     cfg = c.store.get_setting("ai", {}) or {}
     if body.get("provider"):

@@ -126,6 +126,9 @@ def test_cross_match_stats_and_insights(env):
     assert all({"id", "kind", "severity", "title", "detail"} <= set(f) for f in ins["findings"])
     again = client.get(f"/api/players/{HERO}/insights").json()
     assert again == ins   # 规则层可复现
+    nuke = client.get(f"/api/players/{HERO}/insights?map=de_nuke").json()
+    assert nuke["scope"] == {"last": None, "map": "de_nuke", "games": 2}
+    assert any(f["title"] == "样本不足" for f in nuke["findings"])
 
     hl = client.get(f"/api/players/{HERO}/highlights?limit=5").json()
     assert len(hl) <= 5 and all(h["steamid"] == HERO for h in hl)
