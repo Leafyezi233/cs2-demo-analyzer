@@ -3,7 +3,7 @@
 import json, os, subprocess, sys, time, urllib.request, urllib.error
 from pathlib import Path
 
-ROOT = Path(r"D:\dsh工作区1\cs2-demo-analyzer")
+ROOT = Path(__file__).resolve().parents[2]
 DIST = ROOT / "dist" / "CS2数据面板"
 PYEXE = DIST / "runtime" / "python.exe"
 DEMO = ROOT / "数据" / "demos" / "match730_003831016083200933917_0573296683_401.dem"
@@ -51,7 +51,7 @@ def main():
         while True:
             time.sleep(1.0)
             st = get("/api/tasks/" + tid)
-            if st["status"] in ("done", "error"):
+            if st["status"] in ("done", "failed"):
                 break
         print("status:", st["status"], "seconds:", st.get("seconds"), "stage:", st.get("stage"))
         if st["status"] != "done":

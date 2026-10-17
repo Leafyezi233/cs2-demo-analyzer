@@ -1,0 +1,4 @@
+# 运行时依赖（便携包 build_dist.py 从 .venv 复制这些包）
+awpy==3.0.0
+fastapi>=0.110
+uvicorn>=0.29
